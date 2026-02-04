@@ -1,97 +1,67 @@
-# 🚀 Open-Sourcing CSNP — Comic Social Network Platform
+# 🚀 Toan Nguyen — Platform Engineering & Enterprise Architecture
 
-Hi, I'm **Toan Nguyen (aka zngtfy)** – a backend developer passionate about system architecture, clean code, and distributed systems.  
-This project is my exploration into how modern microservices can scale across social and fintech domains.
+Hi, I’m **Toan Nguyen Van** — a Platform Engineer and architecture-focused backend engineer passionate about building governance-driven distributed platforms.
 
----
-
-## 💡 What is CSNP?
-
-**CSNP (Comic Social Network Platform)** is a polyglot microservices backend built for modern social and fintech use cases.  
-The platform applies clean architecture principles, distributed messaging, and Kubernetes-native deployment.
-
-Key architecture highlights:
-
-- 🧱 **Domain-Driven Design (DDD)**
-- ⚙️ **CQRS** with MediatR (in .NET)
-- 📨 **Event-Driven Architecture** using RabbitMQ + MassTransit
-- 🔁 **Saga Pattern** for distributed transactions
-- 🔐 **Centralized SSO** with OpenIddict
-- ☸️ **Kubernetes-native deployments** (ArgoCD, Helm, Harbor)
-- 💾 Storage: PostgreSQL, Redis, MinIO
-- 🧠 Polyglot services: `.NET`, `Spring Boot`, `NestJS`
+I focus on designing secure, scalable, and auditable Internal Developer Platforms (IDP), with strong experience in fintech domain modeling, cloud-native runtime design, and Zero Trust platform security.
 
 ---
 
-## 📦 Core Services Overview
+## 💡 About CSNP
 
-### 🔐 Web API (.NET 9) — SSO + Notification + Social Video
+**CSNP — Core Security Network Platform** is my long-term architecture research and enterprise platform engineering laboratory.
 
-Acts as the central hub for authentication and system-wide services.
+CSNP is designed as a governance-driven platform ecosystem that integrates:
 
-- OpenIddict-based SSO
-- Email notification (background service)
-- Social features: post short videos, comment (TikTok-style)
-- Shared Kernel: `ValueObject`, `DomainEvent`, `Entity<T>`
-- PostgreSQL, Redis, MinIO
-- Helm chart for Kubernetes
+* Developer platform and onboarding standards
+* Identity and security trust boundaries
+* GitOps-based operational governance
+* Distributed fintech and social domain modeling
+* Cloud-native runtime platform infrastructure
 
-🔗 [Code](https://github.com/skg-csnp/api-web)
-
----
-
-### 💸 Fintech API (.NET 9) — Wallet + Event-Driven + Saga
-
-Models wallet operations like top-up, transfer, and history.
-
-- CQRS with MediatR
-- Event publishing via RabbitMQ + MassTransit
-- Saga orchestration
-- PostgreSQL, Helm/Kubernetes
-
-🔗 [Code](https://github.com/skg-csnp/api-fintech)
+CSNP is not a single application or microservices project.
+It is a full enterprise platform architecture blueprint designed to simulate real-world production constraints across infrastructure, platform, application, and governance layers.
 
 ---
 
-### 📱 Mobile Gateway (Spring Boot)
+## 🧠 Architecture & Engineering Focus
 
-Backend gateway for mobile app access to platform services.
+I actively design and experiment with:
 
-- RESTful gateway controller
-- Redis cache
-- Liquibase for DB migration
-- Kubernetes-ready config
-
-🔗 [Code](https://github.com/skg-csnp/api-mobile)
-
----
-
-### 🛠 Admin Portal API (NestJS)
-
-Admin backend to manage system and user settings.
-
-- CQRS modular pattern
-- Prisma ORM
-- Role-Based Access Control (RBAC)
-- Shared SSO Authentication
-- Kubernetes deployment ready
-
-🔗 [Code](https://github.com/skg-csnp/api-admin)
+* Governance-first Internal Developer Platform (IDP)
+* Domain-Driven Design (DDD)
+* Clean Architecture & CQRS application modeling
+* Event-Driven distributed system orchestration
+* Zero Trust identity and access architecture
+* GitOps-based platform control plane design
+* Kubernetes-native runtime platform architecture
+* Fintech wallet and ledger transaction modeling
 
 ---
 
-## 🔗 About Me
+## ⚙️ Core Technology Areas
 
-I'm currently deep-diving into:
-- DDD, CQRS, and Event-Driven Design
-- Kubernetes and DevOps tooling
-- Building scalable, maintainable backend systems
-
-📫 Connect with me:
-- GitHub: [zngtfy](https://github.com/zngtfy)
-- LinkedIn: [Toan Nguyen](https://www.linkedin.com/in/toan-nguyen-van-0b8b73123/)
-- Email: nvt87x@gmail.com
+* Runtime Authority: .NET (LTS)
+* Messaging: RabbitMQ + MassTransit
+* Data: PostgreSQL, Redis
+* Object Storage: MinIO
+* Identity Platform: Keycloak
+* CI/CD Control Plane: Jenkins
+* GitOps Deployment: ArgoCD
+* Container Runtime: Kubernetes
+* Infrastructure Automation: Terraform, Ansible
+* Platform Lab Infrastructure: Proxmox + pfSense
 
 ---
 
-Thanks for stopping by! If you're into architecture, DevOps, or building awesome backend systems — feel free to connect 🙌
+## 🎯 Professional Direction
+
+I am actively growing toward roles in:
+
+* Platform Engineering
+* Internal Developer Platform (IDP)
+* Solution Architecture
+* Fintech Distributed Systems Architecture
+
+---
+
+> I build governance-driven platforms that allow distributed systems to scale safely, remain auditable, and evolve predictably.
