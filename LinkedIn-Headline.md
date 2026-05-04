@@ -1,1 +1,1 @@
-Platform Engineer | Internal Developer Platform (IDP) | Distributed Systems | Fintech Architecture
+Senior Backend & Platform Engineer · Distributed Systems · Fintech · Kubernetes · .NET

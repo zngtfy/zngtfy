@@ -1,28 +1,30 @@
-I am a Platform Engineer and distributed system architecture enthusiast with over 12 years of backend engineering experience and deep specialization in governance-driven cloud-native platform design.
+Senior backend and platform engineer with 16+ years of experience building distributed systems across fintech, enterprise, and analytics domains.
 
-My primary focus is building secure, scalable, and auditable distributed systems by combining platform engineering principles with domain-driven architecture.
+I work across the full stack — from domain-driven backend services and event-driven architecture to Kubernetes platform infrastructure, GitOps delivery, and cloud deployment. My focus is on reliability, operational correctness, and end-to-end system ownership.
 
-To develop real-world architecture experience, I designed and continue to evolve **CSNP — Core Security Network Platform**, an enterprise platform engineering laboratory that simulates production-grade fintech, social, and infrastructure ecosystems.
+──────────────────────────────────────
 
-CSNP explores challenges across multiple architectural layers:
+CSNP — Core Security Network Platform
 
-• Internal Developer Platform (IDP) design and developer onboarding governance
-• Zero Trust identity, access control, and trust boundary architecture
-• GitOps-based operational governance and environment promotion models
-• Distributed transaction orchestration using event-driven workflows
-• Kubernetes-native runtime platform and control plane services
-• Fintech wallet, ledger, and transaction domain modeling
+A self-directed platform engineering initiative I designed and built end-to-end to simulate real-world production constraints at system scale — modeled after real exchange architecture.
 
-My strongest technical interests include:
+What I built:
+• 6 fintech bounded contexts (.NET 10, DDD, CQRS): Wallet, Payment, Trading, Ledger, Payout, Compliance
+• Reconciliation architecture across Wallet↔Ledger and Payment↔Provider boundaries with idempotency and exactly-once semantics
+• Event-driven reliability: Outbox/Inbox (MassTransit + RabbitMQ), Saga pattern for distributed transaction coordination
+• Infrastructure from bare-metal up: Proxmox → Terraform + Ansible → Kubernetes (kubeadm v1.35) → ArgoCD GitOps
+• AWS deployment: VPC multi-AZ, EKS with IRSA, ALB Ingress — full Internet→Pod flow verified
+• Zero Trust security: Keycloak OIDC/RBAC, HashiCorp Vault, pfSense 4-zone network segmentation, PCI-DSS v4.0 aligned
+• Load tested at 80 VUs for 5 minutes: 31,191 iterations, ~103 req/s, p(95)=649ms, 99.99% success rate
+• 185+ architectural documents: ADRs, C4/UML diagrams, HLD/LLD specs, runbooks, Day-0→Day-2 playbooks
 
-* Platform engineering and IDP architecture
-* Distributed system reliability and messaging orchestration
-* Security-first system design and identity governance
-* Fintech infrastructure and transactional workflow modeling
-* Developer experience and platform standardization
+──────────────────────────────────────
 
-I strongly believe that large distributed systems succeed only when governance, trust boundaries, and operational discipline are designed as first-class architecture concerns.
+Core strengths:
+• Backend architecture: Clean Architecture, DDD, CQRS, Outbox/Inbox, Saga, Reconciliation
+• Platform: Kubernetes (kubeadm + EKS), ArgoCD, Jenkins CI, Harbor, Helm
+• Cloud & IaC: AWS (VPC/EKS/ALB/IRSA), Terraform, Ansible, Proxmox
+• Security: Keycloak, HashiCorp Vault, Zero Trust, PCI-DSS
+• Languages & data: .NET 10/C#, Go, PostgreSQL, Redis, RabbitMQ, Kafka
 
-I am particularly interested in opportunities related to platform engineering, solution architecture, and fintech infrastructure platforms, especially in globally distributed or remote environments.
-
-Designing governance-driven platforms that make distributed systems secure, reliable, and evolvable at enterprise scale.
+Open to senior backend, platform, or hybrid roles — especially in distributed systems, fintech infrastructure, or cloud-native environments. Remote or international welcome.

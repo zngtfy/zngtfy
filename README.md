@@ -1,67 +1,43 @@
-# 🚀 Toan Nguyen — Platform Engineering & Enterprise Architecture
+# Toan Nguyen — Senior Backend & Platform Engineer
 
-Hi, I’m **Toan Nguyen Van** — a Platform Engineer and architecture-focused backend engineer passionate about building governance-driven distributed platforms.
-
-I focus on designing secure, scalable, and auditable Internal Developer Platforms (IDP), with strong experience in fintech domain modeling, cloud-native runtime design, and Zero Trust platform security.
+Backend and platform engineer with 16+ years of experience across fintech, enterprise, and analytics domains. I design distributed systems end-to-end — from domain-driven backend services to Kubernetes infrastructure, GitOps delivery, and cloud deployment.
 
 ---
 
-## 💡 About CSNP
+## CSNP — Core Security Network Platform
 
-**CSNP — Core Security Network Platform** is my long-term architecture research and enterprise platform engineering laboratory.
+A self-directed initiative to design and build a production-grade distributed fintech platform simulating real-world constraints at system scale — modeled after real exchange architecture. No team support. Full lifecycle ownership.
 
-CSNP is designed as a governance-driven platform ecosystem that integrates:
+**What's inside:**
 
-* Developer platform and onboarding standards
-* Identity and security trust boundaries
-* GitOps-based operational governance
-* Distributed fintech and social domain modeling
-* Cloud-native runtime platform infrastructure
-
-CSNP is not a single application or microservices project.
-It is a full enterprise platform architecture blueprint designed to simulate real-world production constraints across infrastructure, platform, application, and governance layers.
-
----
-
-## 🧠 Architecture & Engineering Focus
-
-I actively design and experiment with:
-
-* Governance-first Internal Developer Platform (IDP)
-* Domain-Driven Design (DDD)
-* Clean Architecture & CQRS application modeling
-* Event-Driven distributed system orchestration
-* Zero Trust identity and access architecture
-* GitOps-based platform control plane design
-* Kubernetes-native runtime platform architecture
-* Fintech wallet and ledger transaction modeling
+- **6 fintech bounded contexts** (.NET 10, DDD, CQRS): Wallet, Payment, Trading, Ledger, Payout, Compliance
+- **Event-driven reliability**: Outbox/Inbox with MassTransit + RabbitMQ; Saga pattern for distributed transaction coordination
+- **Reconciliation**: Wallet↔Ledger and Payment↔Provider boundaries — idempotency, exactly-once semantics, automated mismatch recovery
+- **Trading engine**: In-memory order matching with `Channel<T>`, price-time priority order book, real-time SignalR feed
+- **Infrastructure from bare-metal**: Proxmox VE → VM provisioning (Terraform + Ansible) → Kubernetes (kubeadm v1.35, Calico CNI)
+- **Network segmentation**: pfSense 4-zone architecture (WAN / LAN / DMZ / MGMT), Zero Trust isolation
+- **AWS deployment**: VPC multi-AZ, EKS + IRSA (OIDC), ALB Ingress — full Internet → ALB → Pod flow verified
+- **GitOps delivery**: ArgoCD App-of-Apps, Jenkins shared-library CI, Harbor registry, DEV → UAT → PROD promotion
+- **Security**: Keycloak OIDC/RBAC, HashiCorp Vault secrets injection, PCI-DSS v4.0 and ISO/IEC 27001 aligned
+- **Load tested (k6)**: 80 VUs, 5 min — 31,191 iterations, ~103 req/s, p(95)=649ms, 99.99% success rate
+- **Documentation**: 185+ docs — ADRs, C4/UML, HLD/LLD, runbooks, Day-0 → Day-2 operational playbooks
 
 ---
 
-## ⚙️ Core Technology Areas
+## Tech Stack
 
-* Runtime Authority: .NET (LTS)
-* Messaging: RabbitMQ + MassTransit
-* Data: PostgreSQL, Redis
-* Object Storage: MinIO
-* Identity Platform: Keycloak
-* CI/CD Control Plane: Jenkins
-* GitOps Deployment: ArgoCD
-* Container Runtime: Kubernetes
-* Infrastructure Automation: Terraform, Ansible
-* Platform Lab Infrastructure: Proxmox + pfSense
-
----
-
-## 🎯 Professional Direction
-
-I am actively growing toward roles in:
-
-* Platform Engineering
-* Internal Developer Platform (IDP)
-* Solution Architecture
-* Fintech Distributed Systems Architecture
+| Layer | Stack |
+|---|---|
+| Backend | .NET 10 / C#, Go |
+| Architecture | Clean Architecture, DDD, CQRS, Outbox/Inbox, Saga, Reconciliation |
+| Messaging | MassTransit, RabbitMQ, Kafka, SignalR |
+| Data | PostgreSQL, Redis, MongoDB, SQL Server |
+| Platform | Kubernetes (kubeadm + EKS), Helm, ArgoCD, Jenkins, Harbor |
+| Cloud & IaC | AWS (VPC, EKS, ALB, IRSA, S3), Terraform, Ansible, Proxmox VE |
+| Networking | pfSense, Zero Trust, 4-zone segmentation |
+| Security | Keycloak, HashiCorp Vault, SSH governance |
+| Observability | Prometheus, Grafana, Loki, k6 |
 
 ---
 
-> I build governance-driven platforms that allow distributed systems to scale safely, remain auditable, and evolve predictably.
+> Building distributed systems that are reliable, auditable, and operationally correct — from domain model to production.
