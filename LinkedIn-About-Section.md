@@ -27,4 +27,4 @@ Core strengths:
 • Security: Keycloak, HashiCorp Vault, Zero Trust, PCI-DSS
 • Languages & data: .NET 10/C#, Go, PostgreSQL, Redis, RabbitMQ, Kafka
 
-Open to senior backend, platform, or hybrid roles — especially in distributed systems, fintech infrastructure, or cloud-native environments. Remote or international welcome.
+Open to senior backend, platform, or hybrid roles where I can contribute to building reliable distributed systems end-to-end — particularly in fintech or high-scale product environments.

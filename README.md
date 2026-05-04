@@ -6,7 +6,7 @@ Backend and platform engineer with 16+ years of experience across fintech, enter
 
 ## CSNP — Core Security Network Platform
 
-A self-directed initiative to design and build a production-grade distributed fintech platform simulating real-world constraints at system scale — modeled after real exchange architecture. No team support. Full lifecycle ownership.
+A self-directed initiative to design and build a production-like distributed fintech platform simulating real-world constraints at system scale — modeled after real exchange architecture. No team support. Full lifecycle ownership.
 
 **What's inside:**
 

@@ -1,1 +1,1 @@
-Senior Backend & Platform Engineer · Distributed Systems · Fintech · Kubernetes · .NET
+Senior Backend & Platform Engineer | Distributed Systems | Fintech | Kubernetes | .NET
