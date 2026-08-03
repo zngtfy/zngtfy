@@ -1,95 +1,65 @@
-# CSNP Docs — Codebase Guide for Claude
+# CSNP Docs - Codebase Guide for Claude
 
 ## Project Overview
 
-**`csnp-docs`** là **Documentation Hub trung tâm** của toàn bộ hệ sinh thái CSNP (Core Security Network Platform). Đây là một **documentation-only repository** — không chứa source code, không có CI/CD pipeline để build artifact. Mọi tài liệu đều là Markdown (`.md`) với YAML front-matter chuẩn.
+`csnp-docs` is the central documentation hub for the CSNP ecosystem
+(Core Services Network Platform). This is a documentation-only repository. It
+does not contain application source code and does not build deployable
+artifacts. Documents are Markdown files with standard YAML front matter.
 
-**Mục tiêu repo:** Tập trung toàn bộ kiến thức kiến trúc, vận hành, quản trị, và onboarding vào một nơi duy nhất, phục vụ tất cả roles: Developer, Infrastructure Engineer, Platform Architect, Security/Compliance, Operator (SRE).
+Repository goals:
 
-**Entry points:**
-- `README.md` — Documentation Hub index (điều hướng toàn bộ)
-- `START-HERE.md` — Role-based reading guide (đọc đầu tiên nếu mới vào)
-- `knowledge/strategy/CSNP-Full-Execution-Roadmap.md` — Execution roadmap từ 0 đến production
+- Centralize architecture, operations, governance, security, and onboarding
+  knowledge.
+- Serve Developers, Infrastructure Engineers, Platform Architects,
+  Security/Compliance, and Operators/SREs.
+- Keep platform decisions and operational guidance auditable and easy to find.
+
+Entry points:
+
+- `README.md` - Documentation hub index.
+- `START-HERE.md` - Role-based reading guide for new readers.
+- `knowledge/strategy/CSNP-Full-Execution-Roadmap.md` - End-to-end execution roadmap.
+
+Important routing rule:
+
+- BFF has no dedicated public hostname. Web uses same-origin `/bff/*`; Admin
+  uses same-origin `/api/*`.
 
 ---
 
 ## Repository Structure
 
-```
+```text
 csnp-docs/
-├── README.md                    # Central navigation hub
-├── START-HERE.md                # Role-based entry point (đọc đầu tiên)
-├── CONTRIBUTING.md              # Quy tắc đóng góp tài liệu
-├── architecture/                # Kiến trúc hệ thống (55 docs)
-│   ├── CSNP-Platform-Big-Picture.md       # 10,000-foot overview toàn platform
-│   ├── foundation/              # Kiến trúc nền tảng
-│   ├── cicd/                    # CI/CD architecture & Jenkins standards
-│   ├── decisions/               # Architecture Decision Records (ADR)
-│   ├── operations/              # Reconciliation architecture
-│   ├── platform/                # Control plane, security, runtime, observability
-│   │   ├── control-plane/       # Control plane overview & service tier classification
-│   │   ├── security/            # Identity, RBAC, secrets, trust model
-│   │   ├── runtime/             # Kubernetes deployment contract, container versioning
-│   │   ├── gitops/              # ArgoCD platform standard
-│   │   ├── reliability/         # SLO, disaster recovery, reliability standards
-│   │   └── developer-experience/# Application onboarding, service template, config management
-│   ├── security/                # SSH trust domain, access path overview
-│   └── services/                # Service-level architecture docs (Wallet, Payment, Payout, Ledger, Trading)
-├── governance/                  # Quản trị & policy (17 docs)
-│   ├── CSNP-Branching-Strategy.md
-│   ├── CSNP-Change-Control.md
-│   ├── CSNP-Environment-Promotion-Policy.md
-│   ├── CSNP-Platform-Governance-Model.md
-│   ├── compliance/              # ISO/IEC 27001, Zero Trust, SSH key lifecycle
-│   └── policies/                # Backup policy
-├── standards/                   # Engineering & platform standards (9 docs)
-│   ├── backend/CSNP-Backend-Engineering-Rules.md
-│   ├── documentation/CSNP-Documentation-Standard.md
-│   ├── events/CSNP-Event-Contract-Standard.md
-│   └── fintech/CSNP-Money-Safety-Standard.md
-├── lifecycle/                   # Playbooks theo vòng đời platform (7 docs)
-│   ├── infrastructure/CSNP-Day0-Infrastructure-Bootstrap-Playbook.md
-│   ├── platform/CSNP-Day1-Platform-Bootstrap-Playbook.md
-│   └── operations/CSNP-Day2-Platform-Operations-Playbook.md
-├── operations/                  # Hướng dẫn vận hành chi tiết (72 docs)
-│   ├── infrastructure/          # Hypervisor, base OS, provisioning, platform services
-│   │   ├── base-os/             # Ubuntu 24.04 / Rocky 10 / Debian 13 golden templates
-│   │   ├── hypervisor/          # Proxmox bare-metal installation
-│   │   ├── platform-services/   # Jenkins, ArgoCD, Harbor, Keycloak, Vault, Edge Proxy
-│   │   ├── identity/            # Keycloak RBAC, JWT validation, SSO
-│   │   ├── access-and-keys/     # SSH keys, deploy keys, inventories
-│   │   └── provisioning/        # VM cloning, post-clone provisioning
-│   ├── network/                 # Network segmentation design, pfSense
-│   ├── runbooks/                # Break-glass, key rotation, failure recovery
-│   │   ├── jenkins/             # Jenkins CI agent disk full
-│   │   ├── kubernetes/          # Kubernetes worker disk full
-│   │   └── vault/               # Vault troubleshooting
-│   └── procedures/              # Monitoring guide
-├── guides/                      # Guides theo role (5 docs)
-│   ├── developer/               # GitOps ArgoCD DEV guide
-│   ├── operator/
-│   └── onboarding/
-├── knowledge/                   # Glossary, strategy, canonical knowledge (7 docs)
-│   ├── glossary/CSNP-Glossary.md
-│   ├── glossary/CSNP-Distributed-Glossary.md
-│   └── strategy/CSNP-Full-Execution-Roadmap.md
-├── learning/                    # Overview, FAQ, quickstart, troubleshooting (5 docs)
-│   └── overview/CSNP-Enterprise-Overview.md
-├── templates/                   # Reusable doc templates (8 docs)
-│   ├── CSNP-Architecture-Overview-Template.md
-│   ├── CSNP-Platform-Standard-Template.md
-│   ├── CSNP-Implementation-Guide-Template.md
-│   ├── CSNP-Playbook-Template.md
-│   ├── CSNP-Runbook-Template.md
-│   └── backend/CSNP-Service-Template.md
-└── assets/                      # Diagrams and visual assets
+|-- README.md                    # Central navigation hub
+|-- START-HERE.md                # Role-based entry point
+|-- CONTRIBUTING.md              # Documentation contribution rules
+|-- architecture/                # System and platform architecture
+|   |-- CSNP-Platform-Big-Picture.md
+|   |-- foundation/              # Foundation architecture
+|   |-- cicd/                    # CI/CD architecture and Jenkins standards
+|   |-- decisions/               # Architecture Decision Records
+|   |-- operations/              # Reconciliation architecture
+|   |-- platform/                # Control plane, security, runtime, observability
+|   |-- security/                # SSH trust domain and access path overview
+|   `-- services/                # Service-level architecture docs
+|-- governance/                  # Governance and policy documents
+|-- standards/                   # Engineering and platform standards
+|-- lifecycle/                   # Day-0, Day-1, and Day-2 playbooks
+|-- operations/                  # Infrastructure and operations guides
+|-- guides/                      # Role-based guides
+|-- knowledge/                   # Glossary, strategy, canonical knowledge
+|-- learning/                    # Overview, FAQ, quickstart, troubleshooting
+|-- templates/                   # Reusable documentation templates
+`-- assets/                      # Diagrams and visual assets
 ```
 
 ---
 
 ## Document Format Standard
 
-**Tất cả documents PHẢI có YAML front-matter:**
+All documents must include YAML front matter:
 
 ```yaml
 ---
@@ -99,261 +69,311 @@ author: CSNP Architecture Team
 status: Draft | Approved | Deprecated
 version: 1.0
 last-updated: YYYY-MM-DD
-classification: Internal – <Category>
+classification: Internal - <Category>
 ---
 ```
 
-**Doc-types hiện có:** `Architecture Overview`, `Platform Standard`, `Policy`, `Playbook`, `Runbook`, `Glossary`, `Documentation Standard`, `Roadmap`, `Documentation Guide`, `Documentation Index`
+Current document types include:
 
-**Classification pattern:** `Internal – Architecture / Platform / Security`, `Internal – CI/CD / DevSecOps`, `Internal – Governance / Source Control`, v.v.
+- `Architecture Overview`
+- `Platform Standard`
+- `Policy`
+- `Playbook`
+- `Runbook`
+- `Glossary`
+- `Documentation Standard`
+- `Roadmap`
+- `Documentation Guide`
+- `Documentation Index`
 
-**Cấu trúc section:** Numbered sections (1, 2, 3...), mỗi sub-section có prefix số (1.1, 1.2, 4.1 ...). Không bỏ qua số.
+Section structure:
+
+- Use numbered sections.
+- Use numbered subsections such as `1.1`, `1.2`, and `4.1`.
+- Do not skip section numbers.
+- Write documentation in English.
 
 ---
 
-## CSNP Ecosystem — Repositories
+## CSNP Ecosystem Repositories
 
-| Repository | Loại | Mục đích |
+| Repository | Type | Purpose |
 | --- | --- | --- |
-| `csnp-fintech` | Application | Wallet, Payment, Ledger, Trading, Payout, Compliance |
-| `csnp-platform` | Application | Credential (SSO), Notification, Admin Portal (Blazor) |
-| `csnp-social` | Application | Post, Comment, Feed, Follow *(planned)* |
-| `csnp-web` | Presentation | User Web Portal (Next.js) |
-| `csnp-admin` | Presentation | Admin Portal (Angular) |
+| `csnp-identity` | Application | Enterprise IAM, identity mapping, RBAC/ABAC authorization, permission evaluation |
+| `csnp-fintech` | Application | Wallet, Payment, Ledger, Settlement |
+| `csnp-compliance` | Application | KYC, AML detection, suspicious activity reporting |
+| `csnp-platform` | Application | Audit, Notification, Workflow, Document, shared platform services |
+| `csnp-tradefinance` | Application | Schedule of Offer, Invoice Financing, Factoring, LC/TR, Fund Request, Customer Limit |
+| `csnp-social` | Application | Post, Comment, Feed, Follow |
+| `csnp-web` | Presentation | User Web Portal built with Next.js |
+| `csnp-admin` | Presentation | Admin Portal built with Angular |
 | `csnp-mobile` | Presentation | Mobile App |
+| `csnp-bff` | BFF | Go BFF services for Web/Admin: `bff-web` and `bff-admin` |
 | `csnp-gitops-root` | GitOps | ArgoCD control plane / App-of-Apps |
 | `csnp-gitops-fintech` | GitOps | Fintech application manifests |
+| `csnp-gitops-compliance` | GitOps | Compliance service manifests |
 | `csnp-gitops-platform` | GitOps | Platform service manifests |
+| `csnp-gitops-identity` | GitOps | Identity service manifests |
+| `csnp-gitops-tradefinance` | GitOps | Trade Finance service manifests |
 | `csnp-gitops-social` | GitOps | Social service manifests |
 | `csnp-gitops-web` | GitOps | Web UI manifests |
 | `csnp-gitops-admin` | GitOps | Admin UI manifests |
+| `csnp-gitops-bff` | GitOps | BFF workload manifests; same-origin routing follows ADR-0004 |
 | `csnp-infra` | Infrastructure | Infrastructure as Code |
-| `csnp-cicd` | Infrastructure | CI/CD shared libraries & templates |
+| `csnp-cicd` | Infrastructure | CI/CD shared libraries and templates |
 | `csnp-idp` | Infrastructure | Internal Developer Platform |
 | `csnp-monitoring` | Infrastructure | Observability configuration |
-| `csnp-devtools` | Developer Tooling | Internal tools (AI Team Bot, CLI, scripts) |
-| **`csnp-docs`** | Documentation | Architecture, policies, SOPs, runbooks *(this repo)* |
+| `csnp-devtools` | Developer Tooling | Internal tools, CLI, and scripts |
+| `csnp-docs` | Documentation | Architecture, policies, SOPs, runbooks |
 | `csnp-public-architecture` | Documentation | Public/sanitized platform docs |
 
-**Rules cứng:**
-- Application repos: **chỉ source code + CI logic**, không có deployment manifests
-- GitOps repos: **chỉ desired state**, không có source code
-- Mỗi repo một concern duy nhất
+Rules:
+
+- Application repositories contain source code and CI logic only.
+- GitOps repositories contain desired state only.
+- Each repository has one clear concern.
 
 ---
 
 ## Architecture Overview
 
-### Platform Layers (6 layers)
+### Platform Layers
 
-```
-1. Human & External Access Layer
-   → Developers, Platform Engineers, SRE, Security/Auditors
-   → SSH (role-based), Web UIs (Backstage, Jenkins, ArgoCD, Harbor, Keycloak)
+```text
+1. Human and External Access Layer
+   -> Developers, Platform Engineers, SRE, Security/Auditors
+   -> SSH, Backstage, Jenkins, ArgoCD, Harbor, Keycloak
 
-2. Identity & Access Management Layer (Keycloak)
-   → SSO, OIDC/JWT, Role management, token issuance
-   → Consumed by: Jenkins, ArgoCD, Backstage, Harbor, internal apps
+2. Identity and Access Management Layer
+   -> Platform SSO via Keycloak
+   -> Application identity via csnp-identity
+   -> csnp-identity supports Keycloak, Cognito, and Entra ID per deployment
+   -> Consumed by Jenkins, ArgoCD, Backstage, Harbor, BFF, internal apps
 
-3. Developer Experience & Control Plane Layer (Backstage + Git)
-   → Service catalog, CI/CD visibility, documentation discovery
+3. Developer Experience and Control Plane Layer
+   -> Backstage, Git, service catalog, CI/CD visibility
 
-4. CI (Build & Verification) Layer (Jenkins Controller + Agents)
-   → Build, test, package, image push → Harbor
-   → NEVER deploys directly to Kubernetes
+4. CI Layer
+   -> Jenkins builds, tests, packages, and pushes images to Harbor
+   -> Jenkins never deploys directly to Kubernetes
 
-5. GitOps & Deployment Control Layer (ArgoCD)
-   → Pull-based declarative deployment
-   → Monitors GitOps repos → reconciles to Kubernetes clusters
+5. GitOps and Deployment Control Layer
+   -> ArgoCD reconciles Kubernetes clusters from GitOps repositories
 
-6. Runtime & Platform Services Layer (Kubernetes + Edge Proxy + Harbor)
-   → DEV / UAT / PRO workload environments
-   → No human access to workloads; all changes via GitOps
-```
-
-### End-to-End CI/CD Flow
-
-```
-Developer pushes code
-    → Git (Application Repo)
-        → Jenkins triggered
-            → Build / Test / Package / Image push → Harbor
-                → GitOps repo updated (new image tag)
-                    → ArgoCD detects change
-                        → Reconciles to Kubernetes cluster
-                            → Observability captures all actions
+6. Runtime and Platform Services Layer
+   -> DEV, UAT, and PRO workload environments
+   -> No human access to workloads; all changes go through GitOps
 ```
 
-**Key principle:** Jenkins builds; ArgoCD deploys. Không bao giờ ngược lại.
+Key principle: Jenkins builds; ArgoCD deploys.
 
-### Network Zones (4 zones — Proxmox + pfSense)
+### Network Zones
 
-| Zone | Bridge | Trust Level | Mục đích |
+| Zone | Bridge | Trust Level | Purpose |
 | --- | --- | --- | --- |
 | WAN | `vmbr0` | Untrusted | Internet uplink |
 | DMZ | `vmbr2` | Semi-trusted | Edge proxy, TLS termination |
-| MGMT | `vmbr3` | Trusted | Platform services, admin (Keycloak, Jenkins, Harbor, ArgoCD, Vault) |
-| LAN | `vmbr1` | Restricted | Application runtime, data |
+| MGMT | `vmbr3` | Trusted | Platform services and admin tools |
+| LAN | `vmbr1` | Restricted | Application runtime and data |
 
-Tất cả inter-zone routing phải qua pfSense.
+All inter-zone routing must go through pfSense.
 
 ### Domain Naming Standard
 
-```
+```text
 # Public UI
-web.csnp.xyz (PRO), web-dev.csnp.xyz (DEV), web-uat.csnp.xyz (UAT)
+csnp.xyz (PRO), dev.csnp.xyz (DEV), uat.csnp.xyz (UAT)
 
 # Public API
 api.csnp.xyz, api-dev.csnp.xyz, api-uat.csnp.xyz
 
-# Internal API (không public)
+# Internal API
 int-api.csnp.xyz, int-api-dev.csnp.xyz
 
-# Admin UI / Admin API
-admin.csnp.xyz, admin-api.csnp.xyz
+# Admin UI
+admin.csnp.xyz, admin-dev.csnp.xyz, admin-uat.csnp.xyz
 
-# Platform services (internal only)
+# Same-origin BFF routing
+dev.csnp.xyz/bff/*             -> csnp-dev-bff-web
+uat.csnp.xyz/bff/*             -> csnp-uat-bff-web
+csnp.xyz/bff/*                 -> csnp-pro-bff-web
+admin-dev.csnp.xyz/api/*       -> csnp-dev-bff-admin
+admin-uat.csnp.xyz/api/*       -> csnp-uat-bff-admin
+admin.csnp.xyz/api/*           -> csnp-pro-bff-admin
+
+# Platform services
 idp-dev.csnp.xyz        # Keycloak
 harbor.csnp.xyz         # Container Registry
 jenkins-master.csnp.xyz
 argocd-dev.csnp.xyz
 ```
 
-**Rules:** Microservices KHÔNG có domain riêng. Môi trường PHẢI encode trong subdomain (không encode trong path). Root `csnp.xyz` chỉ dùng cho production public UI.
+Rules:
+
+- Microservices do not own public domains.
+- Environment must be encoded in the subdomain, not the path.
+- Root `csnp.xyz` is reserved for the production public UI.
+- Web/Admin browsers do not call `api-<env>.csnp.xyz` directly.
 
 ---
 
-## Key Standards & Policies
+## Identity and Presentation Boundaries
+
+- `csnp-platform/src/Credential` is a legacy Keycloak-only identity integration
+  boundary.
+- `csnp-identity` is the canonical application identity service.
+- `csnp-identity` supports Keycloak, Cognito, and Entra ID per deployment.
+- The canonical user reference is `UserId`.
+- Provider subjects and claims must be mapped to `UserId` before downstream use.
+- `csnp-web` and `csnp-admin` currently access backend capabilities through
+  `csnp-bff`.
+- Direct public API access from presentation apps is a customer-specific
+  deployment variant, not the default implementation path.
+
+---
+
+## Key Standards and Policies
 
 ### Branching Strategy
 
-| Branch | Environment | Đặc điểm |
+| Branch | Environment | Characteristics |
 | --- | --- | --- |
 | `dev` | Development | Auto-trigger CI, high velocity |
 | `uat` | UAT | Controlled promotion |
 | `stg` | Staging | Pre-production validation |
 | `pro` | Production | Gated, manual approval required |
 
-Working branches: `feature/`, `bugfix/`, `hotfix/`, `refactor/` — short-lived, không deploy thẳng lên production.
+Rules:
 
-**Rules:**
-- Direct commits lên environment branches bị cấm
-- Production changes phải đi từ lower environments
-- Mọi change phải traceable qua Git history + PR
+- Direct commits to environment branches are prohibited.
+- Production changes must be promoted from lower environments.
+- Every change must be traceable through Git history and PR review.
 
 ### Environment Promotion Policy
 
-- Artifacts được build **một lần**, promote unchanged qua môi trường
-- Không rebuild artifact cho UAT/PRO
-- Promotion phải **explicit** (manual approval) qua GitOps PR
-- Không bao giờ auto-promote qua environment boundaries
-- Git-based audit trail bắt buộc
+- Build artifacts once and promote them unchanged across environments.
+- Do not rebuild artifacts for UAT or PRO.
+- Promotion must be explicit through GitOps PRs.
+- Never auto-promote across environment boundaries.
+- Git-based audit trail is mandatory.
 
 ### Backend Engineering Rules
 
-**Idempotency (MANDATORY):**
-- Tất cả operations có thể retry phải idempotent
-- Dùng DB-level guarantees (`ON CONFLICT DO NOTHING`)
-- Dùng deterministic idempotency keys
-- Cấm "check-then-insert" pattern
+Idempotency:
 
-**Transaction Management:**
-- Critical operations trong single DB transaction (insert record + update state + insert outbox)
+- Retryable operations must be idempotent.
+- Use database-level guarantees such as `ON CONFLICT DO NOTHING`.
+- Use deterministic idempotency keys.
+- Avoid check-then-insert patterns.
 
-**Event Naming Convention:**
-- Format: `<Entity><Action>IntegrationEvent`
-- Past tense bắt buộc: `WalletWithdrawnIntegrationEvent`, `PayoutSucceededIntegrationEvent`
+Transaction management:
 
-### Money Safety Standard (Fintech)
+- Critical operations must use one database transaction when state and outbox
+  records must commit together.
 
-**Non-negotiable invariants:**
-- Total money in = total money out + current balance
-- Financial action MUST NOT execute more than once
-- All funds MUST eventually reach terminal state
-- Final state MUST be consistent regardless of retries/crashes
+Event naming:
+
+- Use `<Entity><Action>IntegrationEvent`.
+- Use past tense, such as `WalletWithdrawnIntegrationEvent` or
+  `PayoutSucceededIntegrationEvent`.
+
+### Money Safety Standard
+
+- Total money in equals total money out plus current balance.
+- Financial actions must not execute more than once.
+- Funds must eventually reach a terminal state.
+- Final state must be consistent regardless of retries or crashes.
 
 ### Documentation Standard
 
-**Khi tạo doc mới:**
-1. Luôn dùng template từ `templates/`
-2. Thêm đầy đủ YAML front-matter
-3. Numbered sections
-4. Ghi rõ `status: Draft` cho đến khi reviewed
+When creating a new document:
+
+1. Use a template from `templates/`.
+2. Add complete YAML front matter.
+3. Use numbered sections.
+4. Set `status: Draft` until reviewed.
+5. Update the nearest relevant README/index.
+6. Write in English.
 
 ---
 
-## Platform Lifecycle (Day-0 / Day-1 / Day-2)
+## Platform Lifecycle
 
-### Day-0 — Infrastructure Bootstrap
+### Day-0 - Infrastructure Bootstrap
 
-Pre-requisite trước khi cài bất cứ platform service nào:
+Prerequisites before installing any platform service:
 
-1. Bare-metal → Proxmox VE installation + hardening
-2. Network bridges (`vmbr0`–`vmbr3`) + pfSense VM (routing/firewall)
-3. Golden OS templates (Ubuntu 24.04, Rocky 10, Debian 13 XFCE)
-4. Human SSH access governed + inventoried
-5. Secrets bootstrap policy in effect
+1. Bare-metal to Proxmox VE installation and hardening.
+2. Network bridges (`vmbr0` to `vmbr3`) and pfSense routing/firewall.
+3. Golden OS templates.
+4. Governed and inventoried human SSH access.
+5. Secrets bootstrap policy.
 
-### Day-1 — Platform Bootstrap Order (normative)
+### Day-1 - Platform Bootstrap Order
 
-Phải theo đúng thứ tự:
+The normative order is:
 
-1. **Admin Bastion / Control Node** — single human entry point, dùng để chạy Terraform/Ansible
-2. **Edge Proxy (Nginx)** — TLS termination, DMZ zone
-3. **Keycloak (IdP)** — identity foundation, PHẢI trước mọi service khác
-4. **Vault (Secrets Management)** — secrets injection cho Kubernetes
-5. **Harbor (Container Registry)** — artifact storage
-6. **Jenkins Controller** — CI orchestration
-7. **Jenkins Agents** — build execution
-8. **ArgoCD** — GitOps CD, sau khi registry & agents ready
+1. Admin Bastion / Control Node.
+2. Edge Proxy (Nginx).
+3. Keycloak as the platform IdP for control-plane SSO.
+4. Vault for secrets management.
+5. Harbor as the container registry.
+6. Jenkins Controller.
+7. Jenkins Agents.
+8. ArgoCD for GitOps CD after registry and agents are ready.
 
-### Day-2 — Operations
+### Day-2 - Operations
 
-- Incident response model
-- Security maintenance lifecycle  
-- Backup and disaster recovery
-- Upgrade and patch governance
-- Runbook navigation
+- Incident response model.
+- Security maintenance lifecycle.
+- Backup and disaster recovery.
+- Upgrade and patch governance.
+- Runbook navigation.
 
-**Canonical playbook:** `lifecycle/operations/CSNP-Day2-Platform-Operations-Playbook.md`
+Canonical playbook:
+
+- `lifecycle/operations/CSNP-Day2-Platform-Operations-Playbook.md`
 
 ---
 
 ## Security Architecture
 
-### Identity Model (3 categories)
+### Identity Model
 
-| Identity Type | Flow | Ví dụ |
+| Identity Type | Flow | Example |
 | --- | --- | --- |
 | Human Identity | OIDC Authorization Code Flow | End users, traders, backoffice staff |
 | Platform Identity | OIDC SSO | Jenkins, ArgoCD, Harbor, Backstage |
-| Service Identity | Client Credentials *(reserved)* | Internal services (future) |
+| Service Identity | Client Credentials | Internal services |
 
-**JWT Validation (mandatory for all services):**
-- Validate issuer, audience, lifetime
-- Disable default claim remapping
-- `RoleClaimType = "roles"`
-- KHÔNG reimplementation per-service
+JWT validation:
+
+- Validate issuer, audience, and lifetime.
+- Disable default claim remapping.
+- Use `RoleClaimType = "roles"`.
+- Do not reimplement JWT validation per service.
 
 ### Secrets Management
 
-**HashiCorp Vault** — centralized secrets store:
-- Kubernetes pods nhận secrets qua Vault Agent injection (file mount tại `/vault/secrets`)
-- No-op fallback for local dev (nếu mount không tồn tại)
-- Không lưu secrets trong Git, không hardcode trong pipeline
+HashiCorp Vault is the centralized secrets store:
+
+- Kubernetes pods receive secrets through Vault Agent injection.
+- Local development may use a no-op fallback when the mount is absent.
+- Do not store secrets in Git.
+- Do not hardcode secrets in pipelines.
 
 ### Zero Trust Model
 
-- Không có implicit trust giữa zones
-- Tất cả access phải authenticated + authorized qua Keycloak
-- Short-lived credentials preferred
-- Least-privilege enforcement
+- No implicit trust between zones.
+- Platform/control-plane access must authenticate and authorize through Keycloak.
+- Application user access goes through the UI/BFF and `csnp-identity` boundary.
+- External identity provider subjects must map to canonical `UserId`.
+- Prefer short-lived credentials.
+- Enforce least privilege.
 
 ---
 
-## Service Architecture Documents (`architecture/services/`)
-
-Mỗi service có doc riêng mô tả architectural context và design decisions:
+## Service Architecture Documents
 
 | Service | Document |
 | --- | --- |
@@ -363,28 +383,31 @@ Mỗi service có doc riêng mô tả architectural context và design decisions
 | Ledger | `architecture/services/ledger/CSNP-Ledger-Service-Architecture.md` |
 | Trading | `architecture/services/trading/CSNP-Trading-Service-Architecture.md` |
 
-**Reconciliation Architecture:** `architecture/operations/CSNP-Reconciliation-Architecture.md`
-- Wallet vs Ledger reconciliation
-- Payout vs Provider reconciliation
-- Payment vs Provider reconciliation
-- Mismatch detection và handling
+Reconciliation architecture:
+
+- `architecture/operations/CSNP-Reconciliation-Architecture.md`
 
 ---
 
 ## Governance Model
 
-**Governance tiers:**
-- **Tier-0 (Platform-Wide):** Architecture Governance Board — owns cross-domain standards
-- **Architecture Team:** System design, platform architecture, canonical documents
-- **DevOps / Infrastructure Team:** Infrastructure deployment, networking, runbooks
-- **Security Team:** IAM, Zero Trust, audit controls, compliance mappings
-- **Developers:** Follow developer guides, branching strategy, contribution rules
+Governance tiers:
 
-**Compliance alignment:**
-- ISO/IEC 27001 (A.5, A.8, A.12, A.14, A.16)
-- PCI-DSS v4.0 (Requirements 2, 6, 7, 10)
+- Tier-0 Platform-Wide: Architecture Governance Board.
+- Architecture Team: system design, platform architecture, canonical documents.
+- DevOps / Infrastructure Team: infrastructure deployment, networking, runbooks.
+- Security Team: IAM, Zero Trust, audit controls, compliance mappings.
+- Developers: developer guides, branching strategy, contribution rules.
 
-**Exception handling:** Mọi deviation từ standards phải documented, reviewed, approved qua Change Control (`governance/CSNP-Change-Control.md`).
+Compliance alignment:
+
+- ISO/IEC 27001.
+- PCI-DSS v4.0.
+
+Exception handling:
+
+- Deviations from standards must be documented, reviewed, and approved through
+  `governance/CSNP-Change-Control.md`.
 
 ---
 
@@ -396,60 +419,61 @@ Mỗi service có doc riêng mô tả architectural context và design decisions
 | --- | --- |
 | Jenkins Controller | `operations/infrastructure/platform-services/jenkins/CSNP-Jenkins-Installation-DEV.md` |
 | Jenkins Agent | `operations/infrastructure/platform-services/jenkins/CSNP-Jenkins-Agent-Installation-DEV.md` |
-| Harbor (Docker Compose) | `operations/infrastructure/platform-services/harbor/CSNP-Harbor-Installation-DockerCompose-DEV.md` |
-| Keycloak (Podman) | `operations/infrastructure/platform-services/keycloak/CSNP-Keycloak-Installation-Podman-DEV.md` |
+| Harbor | `operations/infrastructure/platform-services/harbor/CSNP-Harbor-Installation-DockerCompose-DEV.md` |
+| Keycloak | `operations/infrastructure/platform-services/keycloak/CSNP-Keycloak-Installation-Podman-DEV.md` |
 | Vault | `operations/infrastructure/platform-services/vault/CSNP-Vault-Installation-DEV.md` |
 | ArgoCD SSH Setup | `operations/infrastructure/platform-services/argocd/CSNP-ArgoCD-GitOps-SSH-Setup.md` |
 | Edge Proxy Nginx | `operations/infrastructure/platform-services/edge-proxy/CSNP-Edge-Proxy-Nginx-Installation-DEV.md` |
 | Admin Bastion | `operations/infrastructure/platform-services/admin/CSNP-Admin-Bastion-VM-Standard.md` |
 | Control Node | `operations/infrastructure/platform-services/admin/CSNP-Control-Node-Bootstrap-DEV.md` |
 
-### Runbooks (`operations/runbooks/`)
+### Runbooks
 
-| Runbook | Tình huống |
+| Runbook | Situation |
 | --- | --- |
 | `Break-Glass-Access.md` | Emergency access when normal auth fails |
-| `Failure-Recovery-Playbook.md` | Service/infra failure recovery |
+| `Failure-Recovery-Playbook.md` | Service or infrastructure failure recovery |
 | `Revoke-Compromised-SSH-Key.md` | SSH key compromise response |
 | `Rotate-Deploy-Key.md` | Deploy key rotation |
 | `Rotate-Human-SSH-Key.md` | Human SSH key rotation |
 | `CSNP-Jenkins-CI-Agent-Disk-Full-Runbook.md` | Jenkins agent disk full |
-| `CSNP-Kubernetes-Worker-Disk-Full-Runbook.md` | K8s worker node disk full |
-| `CSNP-Vault-Kubernetes-Troubleshooting-Runbook.md` | Vault K8s injection issues |
+| `CSNP-Kubernetes-Worker-Disk-Full-Runbook.md` | Kubernetes worker node disk full |
+| `CSNP-Vault-Kubernetes-Troubleshooting-Runbook.md` | Vault Kubernetes injection issues |
 
 ---
 
 ## Quick Navigation by Role
 
-| Role | Bắt đầu từ |
+| Role | Start With |
 | --- | --- |
-| Mới vào team | `START-HERE.md` → `knowledge/glossary/CSNP-Glossary.md` → `learning/overview/CSNP-Enterprise-Overview.md` |
-| Developer | `architecture/foundation/CSNP-CICD-Architecture.md` → `architecture/foundation/CSNP-GitOps-Architecture.md` |
-| Infrastructure Engineer | `lifecycle/infrastructure/CSNP-Day0-Infrastructure-Bootstrap-Playbook.md` → Day-1 → Day-2 |
-| Platform Architect | `architecture/CSNP-Platform-Big-Picture.md` → `architecture/foundation/` → `architecture/decisions/` |
-| Security/Compliance | `architecture/security/` → `governance/compliance/` → `operations/network/CSNP-Network-Segmentation-Design.md` |
-| Operator (SRE) | `lifecycle/operations/CSNP-Day2-Platform-Operations-Playbook.md` → `operations/runbooks/` |
+| New team member | `START-HERE.md` -> `knowledge/glossary/CSNP-Glossary.md` -> `learning/overview/CSNP-Enterprise-Overview.md` |
+| Developer | `architecture/foundation/CSNP-CICD-Architecture.md` -> `architecture/foundation/CSNP-GitOps-Architecture.md` |
+| Infrastructure Engineer | `lifecycle/infrastructure/CSNP-Day0-Infrastructure-Bootstrap-Playbook.md` -> Day-1 -> Day-2 |
+| Platform Architect | `architecture/CSNP-Platform-Big-Picture.md` -> `architecture/foundation/` -> `architecture/decisions/` |
+| Security/Compliance | `architecture/security/` -> `governance/compliance/` -> `operations/network/CSNP-Network-Segmentation-Design.md` |
+| Operator/SRE | `lifecycle/operations/CSNP-Day2-Platform-Operations-Playbook.md` -> `operations/runbooks/` |
 
 ---
 
-## Key Design Principles (Cross-cutting)
+## Key Design Principles
 
-- **GitOps as the only deployment mechanism** — Git is single source of truth; pull-based; no manual deploys
-- **Immutable artifacts** — build once, promote unchanged (DEV → UAT → PRO)
-- **Zero Trust** — no implicit trust between zones or services
-- **Least privilege by default** — all access scoped and auditable
-- **Auditability by design** — every change traceable via Git history
-- **Day-0 → Day-1 → Day-2 sequencing is mandatory** — no shortcuts
-- **Separation of concerns** — CI builds, CD deploys, never mixed
-- **Microservices do NOT own public domains** — all routed via API Gateway / Ingress
+- GitOps is the only deployment mechanism.
+- Git is the single source of truth for desired state.
+- Build immutable artifacts once and promote them unchanged.
+- Use Zero Trust boundaries; do not rely on implicit network trust.
+- Apply least privilege by default.
+- Make every change auditable through Git history.
+- Follow Day-0, Day-1, and Day-2 sequencing.
+- Keep CI and CD responsibilities separate.
+- Microservices do not own public domains.
 
 ---
 
 ## How to Contribute Documentation
 
-1. Đọc `CONTRIBUTING.md` và `standards/documentation/CSNP-Documentation-Standard.md`
-2. Chọn template phù hợp từ `templates/`
-3. Thêm YAML front-matter đầy đủ, set `status: Draft`
-4. Numbered sections bắt buộc
-5. Cập nhật README.md của thư mục chứa doc mới
-6. Submit PR — tất cả docs thay đổi trong production-impacting areas yêu cầu review
+1. Read `CONTRIBUTING.md` and `standards/documentation/CSNP-Documentation-Standard.md`.
+2. Choose the appropriate template from `templates/`.
+3. Add complete YAML front matter and set `status: Draft`.
+4. Use numbered sections.
+5. Update the README for the directory that contains the new document.
+6. Submit a PR; production-impacting documentation changes require review.

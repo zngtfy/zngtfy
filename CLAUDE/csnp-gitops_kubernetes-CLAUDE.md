@@ -2,24 +2,26 @@
 
 ## Overview
 
-Kubernetes GitOps deployment for the CSNP (Credential Service Notification Platform) fintech system. Manages DEV and UAT environments across 5 sub-repos using **Kustomize** (base + overlay) and **ArgoCD** (App-of-Apps pattern). No Helm charts are authored here — Helm is used only for the monitoring stack via Kustomize's `HelmChartInflationGenerator`.
+Kubernetes GitOps deployment for the CSNP (Core Services Network Platform) fintech system. Manages DEV and UAT environments across 7 sub-repos using **Kustomize** (base + overlay) and **ArgoCD** (App-of-Apps pattern). Monitoring is now managed from a dedicated `csnp-gitops-monitoring` repo rather than being authored inline under `csnp-gitops-root`.
 
 ---
 
 ## Repository Layout
 
-This workspace is a parent directory containing 5 independently cloned git repos (not submodules — each is listed in the top-level `.gitignore`):
+This workspace is a parent directory containing 7 independently cloned git repos (not submodules — each is listed in the top-level `.gitignore`):
 
 ```
 d:\CSNP\GitOps\csnp-gitops_kubernetes/
 ├── csnp-gitops-root/        # Cluster bootstrap: namespaces, NetworkPolicies, monitoring
+├── csnp-gitops-monitoring/  # Observability: Prometheus + Grafana
 ├── csnp-gitops-platform/    # Platform services: credential, notification, zor-presentation
-├── csnp-gitops-fintech/     # Fintech services: payment, wallet, trading, ledger, compliance, payout
+├── csnp-gitops-fintech/     # Fintech services: payment, wallet, trading, ledger, payout
+├── csnp-gitops-compliance/  # Compliance services: api-compliance, consumer-compliance
 ├── csnp-gitops-web/         # Frontend: ui-web (Next.js)
 └── csnp-gitops-admin/       # Frontend: ui-admin (Angular)
 ```
 
-### Sub-repo structure (platform, fintech, web, admin)
+### Sub-repo structure (platform, fintech, compliance, web, admin)
 
 ```
 <sub-repo>/
@@ -48,7 +50,20 @@ d:\CSNP\GitOps\csnp-gitops_kubernetes/
 csnp-gitops-root/
 └── clusters/dev/
     ├── namespace/csnp-dev/         # Namespace + NetworkPolicies
-    └── monitoring/                 # kube-prometheus-stack via Helm
+    └── monitoring/                 # ArgoCD handoff to csnp-gitops-monitoring
+```
+
+### csnp-gitops-monitoring structure
+
+```
+csnp-gitops-monitoring/
+├── apps/
+│   ├── apps-root-dev.yaml          # ArgoCD root Application for DEV monitoring
+│   └── dev/
+│       ├── _root/
+│       │   └── application_monitoring.yaml
+│       └── monitoring/             # Kustomize monitoring stack
+└── config/                         # Source-of-truth config mounted via ConfigMaps
 ```
 
 ---
@@ -62,7 +77,7 @@ csnp-gitops-root/
 | GitOps controller | ArgoCD |
 | Ingress controller | ingress-nginx |
 | Secret management | Hashicorp Vault (platform) / plaintext overlay (fintech) |
-| Monitoring | kube-prometheus-stack v82.2.1 (Prometheus + Grafana + Alertmanager) |
+| Monitoring | Dedicated repo: Prometheus, Grafana, Alertmanager, Loki, Promtail, Tempo, OpenTelemetry Collector |
 | APIs / Workers | .NET Core / C# (`ASPNETCORE_ENVIRONMENT=Production`) |
 | Frontend | Next.js (ui-web, ui-admin), Nginx SPA (zor-presentation) |
 | Auth | Keycloak (external, `idp-dev.csnp.xyz`) |
@@ -82,6 +97,7 @@ csnp-gitops-root/
 | Service | Type | Container Port | K8s Service Ports |
 |---------|------|---------------|-------------------|
 | api-credential | .NET API | 8080 | 80 (HTTP), 81→8081 (gRPC) |
+| api-mobilebff | .NET API | 8080 | 80 (HTTP) |
 | api-notification | .NET API | 8080 | 80 (HTTP), 81→8081 (gRPC) |
 | worker-notification | .NET Worker | 8080 | 80 (HTTP) |
 | zor-presentation | Nginx SPA | 80 | 80 |
@@ -92,13 +108,12 @@ Platform services use **Vault Agent sidecar injection** for secrets and have ded
 
 | Service | Type | Redis |
 |---------|------|-------|
-| api-compliance | .NET API | No |
 | api-ledger | .NET API | No |
 | api-payment | .NET API + Stripe/PayPal | Yes |
 | api-payout | .NET API | Yes |
 | api-trading | .NET API | No |
 | api-wallet | .NET API | Yes |
-| worker-compliance | .NET Worker | No |
+| consumer-wallet | .NET Worker | Yes |
 | worker-ledger | .NET Worker | No |
 | worker-payment | .NET Worker | Yes |
 | worker-payout | .NET Worker | No |
@@ -107,6 +122,15 @@ Platform services use **Vault Agent sidecar injection** for secrets and have ded
 
 All fintech services expose container port 8080; K8s Services expose port 80 (HTTP) and 81→8081 (gRPC) for APIs; workers expose port 80 only.
 
+### Compliance (`csnp-gitops-compliance`)
+
+| Service | Type | Container Port |
+|---------|------|---------------|
+| api-compliance | API | 8080 |
+| consumer-compliance | Worker | 8080 |
+
+Compliance services are managed from a dedicated compliance repo with its own `apps-root-dev` / `apps-root-uat` ArgoCD roots and per-service overlays.
+
 ### Web / Admin
 
 | Service | Type | Container Port |
@@ -114,7 +138,24 @@ All fintech services expose container port 8080; K8s Services expose port 80 (HT
 | ui-web | Next.js | 3000 |
 | ui-admin | Angular | 4200 |
 
-**Total per environment: 20 Deployments** (4 platform + 12 fintech + 2 web/admin + monitoring excluded).
+### Monitoring (`csnp-gitops-monitoring`)
+
+| Component | Workload | Purpose |
+|-----------|----------|---------|
+| grafana | Deployment | Dashboards, datasources, alerting contact points |
+| prometheus | Deployment | Metrics scrape + alert rule evaluation |
+| alertmanager | Deployment | Alert routing/notification delivery |
+| loki | Deployment | Log aggregation |
+| promtail | DaemonSet | Node log shipping to Loki |
+| tempo | Deployment | Trace storage/query |
+| otel-collector | Deployment | OTLP trace ingestion/export |
+
+- Config is stored in `csnp-gitops-monitoring/config/` and generated into `ConfigMap`s/`Secret`s by Kustomize
+- Grafana provisions datasources, dashboards, and alerting contact points from files in `config/grafana/provisioning/`
+- Prometheus loads alert rules from `config/alerts/csnp-alerts.yaml` and sends alerts to standalone Alertmanager
+- Public ingress is exposed for Grafana and Prometheus in the `monitoring` namespace
+
+**Total per environment: 27 workloads** (5 platform + 11 fintech + 2 compliance + 2 web/admin + 7 monitoring, including 1 DaemonSet).
 
 ---
 
@@ -126,7 +167,7 @@ All fintech services expose container port 8080; K8s Services expose port 80 (HT
 |-----------|---------|
 | `csnp-dev` | All DEV workloads |
 | `csnp-uat` | All UAT workloads |
-| `monitoring` | kube-prometheus-stack |
+| `monitoring` | Dedicated observability stack |
 | `argocd` | ArgoCD controller (pre-existing) |
 | `ingress-nginx` | NGINX ingress controller (pre-existing) |
 | `kube-system` | metrics-server (pre-existing) |
@@ -237,8 +278,8 @@ Path pattern `/payment(/|$)(.*)` strips the service prefix before forwarding.
 | `zor-dev.csnp.xyz` | `csnp-dev-zor-presentation:80` |
 | `worker-dev.csnp.xyz /notification` | `csnp-dev-worker-notification:80` |
 | `worker-dev.csnp.xyz /payment` | `csnp-dev-worker-payment:80` |
-| `grafana-dev.csnp.xyz` | `monitoring-grafana:80` |
-| `prometheus-dev.csnp.xyz` | `monitoring-kube-prometheus-prometheus:9090` |
+| `grafana.csnp.xyz` | `csnp-monitoring-grafana:80` |
+| `prometheus.csnp.xyz` | `csnp-monitoring-prometheus:9090` |
 
 UAT mirrors this with `api-uat.csnp.xyz`, `uat.csnp.xyz`, `admin-uat.csnp.xyz`, etc.
 
@@ -251,16 +292,21 @@ UAT mirrors this with `api-uat.csnp.xyz`, `uat.csnp.xyz`, `admin-uat.csnp.xyz`, 
 ```
 [Bootstrapped manually]
   ├── csnp-namespace-security-dev     # watches ops → clusters/dev/namespace/csnp-dev/
-  ├── monitoring-stack                # watches ops → clusters/dev/monitoring/
+  ├── monitoring-stack                # watches ops → clusters/dev/monitoring/ (handoff app)
   ├── metrics-server                  # Helm chart (kubernetes-sigs, v3.13.0)
+  ├── csnp-monitoring-root-dev        # watches kubernetes → csnp-gitops-monitoring/apps/dev/_root/
+  │     └── csnp-monitoring-dev
+  ├── csnp-compliance-root-dev        # watches dev → csnp-gitops-compliance/apps/dev/_root/  (recurse)
+  │     ├── csnp-api-compliance-dev
+  │     └── csnp-consumer-compliance-dev
   ├── csnp-platform-root-dev          # watches dev → apps/dev/_root/  (recurse)
   │     ├── csnp-api-credential-dev
   │     ├── csnp-api-notification-dev
   │     ├── csnp-worker-notification-dev
   │     └── csnp-zor-presentation-dev
   ├── csnp-fintech-root-dev           # watches dev → apps/dev/_root/  (recurse)
-  │     └── csnp-api-{compliance,ledger,payment,payout,trading,wallet}-dev
-  │         csnp-worker-{compliance,ledger,payment,payout,trading,wallet}-dev
+  │     └── csnp-api-{ledger,payment,payout,trading,wallet}-dev
+  │         csnp-worker-{ledger,payment,payout,trading,wallet}-dev
   ├── csnp-web-root-dev               # watches dev → apps/dev/_root/
   │     └── csnp-ui-web-dev
   └── csnp-admin-root-dev             # watches dev → apps/dev/_root/
@@ -281,17 +327,20 @@ DEV deploys automatically on any push to the `dev` branch. UAT requires a manual
 ### Bootstrap commands (first time)
 
 ```bash
-# Enable Helm support in ArgoCD's Kustomize
-kubectl patch configmap argocd-cm -n argocd \
-  --type merge \
-  -p '{"data":{"kustomize.buildOptions":"--enable-helm"}}' \
-  && kubectl rollout restart deploy argocd-repo-server -n argocd
-
-# Create monitoring namespace + Grafana OAuth secret
+# Create monitoring namespace if needed
 kubectl create namespace monitoring
-kubectl create secret generic grafana-oauth-secret \
+
+# Create Grafana admin secret if not managed by GitOps yet
+kubectl create secret generic csnp-monitoring-grafana-admin \
   -n monitoring \
-  --from-literal=client-secret=<value>
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password=<value>
+
+# Create Telegram secret if not managed by GitOps yet
+kubectl create secret generic csnp-monitoring-telegram \
+  -n monitoring \
+  --from-literal=bot-token=<value> \
+  --from-literal=chat-id=<value>
 ```
 
 ---
@@ -383,11 +432,14 @@ NetworkPolicies are defined only for `csnp-dev`; no UAT NetworkPolicies exist in
 
 ## Monitoring
 
-**kube-prometheus-stack v82.2.1** in `monitoring` namespace:
+**Dedicated monitoring stack** in `monitoring` namespace:
 
-- **Grafana**: OAuth via Keycloak (`idp-dev.csnp.xyz/realms/csnp-dev`); roles `grafana-admin`/`grafana-editor` mapped to Grafana roles
-- **Prometheus**: scrapes all namespaces (`serviceMonitorNamespaceSelector.any: true`), 7-day retention
-- **ServiceMonitors**: `api-credential` and `api-payment` are currently defined (pattern ready to extend)
+- **Grafana**: file-provisioned datasources for Prometheus, Loki, and Tempo; dashboards from `config/grafana/dashboards/`; alerting contact points provisioned from file
+- **Prometheus**: loads `config/prometheus-pro.yml`, evaluates `config/alerts/csnp-alerts.yaml`, and forwards alerts to standalone Alertmanager
+- **Alertmanager**: standalone deployment configured from `config/alertmanager/alertmanager.yml`
+- **Loki + Promtail**: centralized log collection pipeline
+- **Tempo + otel-collector**: trace ingestion and storage path for OTLP traffic
+- **Ingress**: `grafana.csnp.xyz` and `prometheus.csnp.xyz` are exposed from the monitoring repo manifests
 
 ---
 
@@ -434,8 +486,10 @@ curl -H "Host: api-dev.csnp.xyz" https://api-dev.csnp.xyz/credential/health
 | Sub-repo | Remote |
 |----------|--------|
 | csnp-gitops-root | `git@github.com:skg-csnp/csnp-gitops-root.git` |
+| csnp-gitops-monitoring | `git@github.com:skg-csnp/csnp-gitops-monitoring.git` |
 | csnp-gitops-platform | `git@github.com:skg-csnp/csnp-gitops-platform.git` |
 | csnp-gitops-fintech | `git@github.com:skg-csnp/csnp-gitops-fintech.git` |
+| csnp-gitops-compliance | `git@github.com:skg-csnp/csnp-gitops-compliance.git` |
 | csnp-gitops-web | `git@github.com:skg-csnp/csnp-gitops-web.git` |
 | csnp-gitops-admin | `git@github.com:skg-csnp/csnp-gitops-admin.git` |
 
@@ -445,7 +499,7 @@ Branch: `ops` (cluster bootstrap), `dev` / `uat` (service overlays)
 
 ## Key Design Decisions
 
-1. **App-of-Apps ArgoCD** — one root Application per sub-repo per environment watches `_root/`; `_root/` contains per-service Application manifests; two-level hierarchy
+1. **App-of-Apps ArgoCD** — one root Application per sub-repo per environment watches `_root/`; `_root/` contains per-service Application manifests; monitoring now follows the same dedicated-repo pattern instead of living inline in `csnp-gitops-root`
 2. **Kustomize base + env overlays** — base is abstract (placeholder image, placeholder hostname); overlays add real image tag, hostname, TLS ref, all env vars, and optionally Vault annotations
 3. **DEV auto-sync, UAT manual** — any push to `dev` branch triggers immediate deployment; UAT promotion requires explicit ArgoCD sync
 4. **Single namespace per environment** — all 20 services share `csnp-dev` / `csnp-uat`; differentiated by `csnp-dev-` namePrefix and `env: csnp-dev` labels

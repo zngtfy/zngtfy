@@ -16,48 +16,73 @@
 
 ```
 csnp-infra/
-├── terraform/                   # VM provisioning (Proxmox VE, post-clone only)
-│   ├── envs/
-│   │   ├── dev/                 # DEV environment — VM definitions per service
-│   │   │   ├── backend.tf       # Local state backend
-│   │   │   ├── variables.tf     # Proxmox API + SSH key variables
-│   │   │   ├── foundation.tf    # Core stateful services (DB, MQ, storage) — currently empty
-│   │   │   ├── docker.tf        # docker01-dev (VMID 9161)
-│   │   │   ├── harbor.tf        # harbor-backend (VMID 9320)
-│   │   │   ├── jenkins.tf       # jenkins-master (VMID 9310) + jenkins-agent-dev (VMID 9311)
-│   │   │   ├── k8s.tf           # k8s-master01-dev (9111) + worker01 (9151) + worker02 (9152)
-│   │   │   ├── keycloak.tf      # keycloak-backend-dev (VMID 9321)
-│   │   │   ├── nginx.tf         # edge-proxy (VMID 9222)
-│   │   │   ├── vault.tf         # vault-backend-dev (VMID 9323)
-│   │   │   └── outputs.tf       # (empty)
-│   │   └── local/               # Local LXC environment (Docker compose for dev services)
-│   │       ├── main.tf          # Proxmox LXC container for docker-dev (VMID 111)
-│   │       ├── variables.tf     # LXC config: bridge, gateway, IPs, storage
-│   │       └── scripts/
-│   │           ├── provision-common.sh      # Shared bash functions (log, prepare_system, etc.)
-│   │           ├── provision-docker.sh      # Docker CE install script
-│   │           └── docker/                  # docker-compose.yml + RabbitMQ/Redis/PostgreSQL configs
-│   └── modules/
-│       └── vm/                  # Reusable Proxmox VM module (clone from Golden Template)
-│           ├── main.tf          # proxmox_vm_qemu resource (q35, OVMF BIOS, cloud-init)
-│           ├── variables.tf     # vmid, name, template, bridge, ip, cpu, memory, tags
-│           └── outputs.tf
-├── ansible/                     # Configuration management
-│   ├── ansible.cfg              # Default inventory: dev.ini, roles_path: ../roles, forks=10
-│   ├── inventory/
-│   │   └── dev.ini              # All DEV hosts grouped by role
-│   └── playbooks/
-│       ├── site.yml             # All hosts: ssh_hardening; jenkins_masters: jenkins_master
-│       ├── install-jenkins-master.yml    # Jenkins LTS + Java 21 installation
-│       ├── install-jenkins-agent.yml     # Jenkins agent installation
-│       ├── install-nginx.yml             # Nginx installation
-│       ├── install-docker.yml            # Docker installation
-│       ├── csnp.ssh_hardening.yml        # SSH daemon hardening (disable password + root login)
-│       ├── csnp.ssh_keys_create.yml      # Per-host SSH key generation + deployment
-│       ├── csnp.ssh_keys_revoke_bootstrap.yml  # Remove bootstrap key (one-way, run after verify)
-│       ├── csnp.ssh_keys_revoke_version.yml    # Revoke specific SSH key version
-│       └── backup-pfsense.yml            # (empty)
-├── roles/                       # Custom Ansible roles
+├── platforms/
+│   ├── aws/                     # AWS infrastructure (future)
+│   │   ├── kubernetes/
+│   │   └── terraform/
+│   └── proxmox/                 # Proxmox VE platform
+│       ├── terraform/           # VM provisioning (Proxmox VE, post-clone only)
+│       │   ├── envs/
+│       │   │   ├── dev/         # DEV environment — VM definitions per service
+│       │   │   │   ├── backend.tf       # Local state backend
+│       │   │   │   ├── variables.tf     # Proxmox API + SSH key variables
+│       │   │   │   ├── foundation.tf    # Core stateful services (DB, MQ, storage) — currently empty
+│       │   │   │   ├── docker.tf        # docker01-dev (VMID 9161)
+│       │   │   │   ├── harbor.tf        # harbor-backend (VMID 9320)
+│       │   │   │   ├── jenkins.tf       # jenkins-master (VMID 9310) + jenkins-agent-dev (VMID 9311)
+│       │   │   │   ├── k8s.tf           # k8s-master01-dev (9111) + worker01 (9151) + worker02 (9152)
+│       │   │   │   ├── keycloak.tf      # keycloak-backend-dev (VMID 9321)
+│       │   │   │   ├── nginx.tf         # edge-proxy (VMID 9222)
+│       │   │   │   ├── vault.tf         # vault-backend-dev (VMID 9323)
+│       │   │   │   └── outputs.tf       # (empty)
+│       │   │   └── local/       # Local LXC environment (Docker compose for dev services)
+│       │   │       ├── main.tf          # Proxmox LXC container for docker-dev (VMID 111)
+│       │   │       ├── variables.tf     # LXC config: bridge, gateway, IPs, storage
+│       │   │       └── scripts/
+│       │   │           ├── provision-common.sh      # Shared bash functions (log, prepare_system, etc.)
+│       │   │           ├── provision-docker.sh      # Docker CE install script
+│       │   │           └── docker/                  # docker-compose.yml + RabbitMQ/Redis/PostgreSQL configs
+│       │   └── modules/
+│       │       └── vm/                  # Reusable Proxmox VM module (clone from Golden Template)
+│       │           ├── main.tf          # proxmox_vm_qemu resource (q35, OVMF BIOS, cloud-init)
+│       │           ├── variables.tf     # vmid, name, template, bridge, ip, cpu, memory, tags
+│       │           └── outputs.tf
+│       ├── ansible/             # Configuration management
+│       │   ├── ansible.cfg              # Default inventory: dev.ini, roles_path: ../roles, forks=10
+│       │   ├── inventory/
+│       │   │   └── dev.ini              # All DEV hosts grouped by role
+│       │   └── playbooks/
+│       │       ├── site.yml             # All hosts: ssh_hardening; jenkins_masters: jenkins_master
+│       │       ├── install-jenkins-master.yml    # Jenkins LTS + Java 21 installation
+│       │       ├── install-jenkins-agent.yml     # Jenkins agent installation
+│       │       ├── install-nginx.yml             # Nginx installation
+│       │       ├── install-docker.yml            # Docker installation
+│       │       ├── csnp.ssh_hardening.yml        # SSH daemon hardening (disable password + root login)
+│       │       ├── csnp.ssh_keys_create.yml      # Per-host SSH key generation + deployment
+│       │       ├── csnp.ssh_keys_revoke_bootstrap.yml  # Remove bootstrap key (one-way, run after verify)
+│       │       ├── csnp.ssh_keys_revoke_version.yml    # Revoke specific SSH key version
+│       │       └── backup-pfsense.yml            # (empty)
+│       ├── roles/               # Custom Ansible roles
+│       │   ├── csnp.jenkins_master/     # Jenkins LTS + Java 21
+│       │   ├── csnp.jenkins_agent/      # Jenkins agent user + packages + Docker
+│       │   ├── csnp.docker/             # Docker CE + Compose v5.1.1
+│       │   ├── csnp.ssh_hardening/      # SSH daemon hardening
+│       │   ├── csnp.ssh_keys_create/    # Per-host SSH key lifecycle (create/deploy/verify)
+│       │   ├── csnp.ssh_keys_revoke_bootstrap/  # Remove bootstrap key
+│       │   └── csnp.ssh_keys_revoke_version/   # Remove key by version tag
+│       ├── edge-proxy/          # Nginx reverse proxy configs
+│       │   ├── nginx.conf               # Main nginx.conf (base config)
+│       │   └── nginx/
+│       │       ├── envs/
+│       │       │   ├── dev/             # 13 vhost configs (all CSNP DEV services)
+│       │       │   └── uat/             # 5 vhost configs
+│       │       └── snippets/            # Shared include fragments
+│       ├── kubernetes/          # Kubernetes cluster setup
+│       │   ├── kubeadm/         # Bash scripts: 00-init-all.sh, 01-setup-kube-node.sh, 02-init-master.sh, reset-all.sh
+│       │   ├── argocd/          # ArgoCD install notes
+│       │   ├── ingress-nginx/   # Ingress NGINX install notes
+│       │   └── operator-tools/  # kubectl aliases
+├── roles/                       # Custom Ansible roles (root-level, shared across platforms)
 │   ├── csnp.jenkins_master/     # Jenkins LTS + Java 21
 │   ├── csnp.jenkins_agent/      # Jenkins agent user + packages + Docker
 │   ├── csnp.docker/             # Docker CE + Compose v5.1.1
@@ -65,18 +90,6 @@ csnp-infra/
 │   ├── csnp.ssh_keys_create/    # Per-host SSH key lifecycle (create/deploy/verify)
 │   ├── csnp.ssh_keys_revoke_bootstrap/  # Remove bootstrap key
 │   └── csnp.ssh_keys_revoke_version/   # Remove key by version tag
-├── edge-proxy/                  # Nginx reverse proxy configs
-│   ├── nginx.conf               # Main nginx.conf (base config)
-│   └── nginx/
-│       ├── envs/
-│       │   ├── dev/             # 13 vhost configs (all CSNP DEV services)
-│       │   └── uat/             # 5 vhost configs
-│       └── snippets/            # Shared include fragments
-├── kubernetes/                  # Kubernetes cluster setup
-│   ├── kubeadm/                 # Bash scripts: 00-init-all.sh, 01-setup-kube-node.sh, 02-init-master.sh, reset-all.sh
-│   ├── argocd/                  # ArgoCD install notes
-│   ├── ingress-nginx/           # Ingress NGINX install notes
-│   └── operator-tools/          # kubectl aliases
 ├── ops/
 │   ├── dev/infra-dev.sh         # Start/stop all DEV VMs in correct order via Proxmox qm
 │   └── uat/infra-uat.sh
@@ -116,7 +129,7 @@ All VMs are provisioned via Terraform from Golden Templates on Proxmox VE. Cloud
 
 ## Terraform
 
-### VM Module (`terraform/modules/vm/`)
+### VM Module (`platforms/proxmox/terraform/modules/vm/`)
 
 Reusable module wrapping `proxmox_vm_qemu`. Every VM call passes the same interface:
 
@@ -162,7 +175,7 @@ State backend: **local** (`terraform.tfstate`) — DEV only. Production requires
 ### Common Commands
 
 ```bash
-cd terraform/envs/dev
+cd platforms/proxmox/terraform/envs/dev
 
 terraform init      # Initialize providers + backend
 terraform plan      # Review changes before apply
@@ -174,7 +187,7 @@ terraform destroy   # ⚠️ Permanently destroys all managed DEV VMs
 
 **What Terraform does NOT manage:** Golden Template lifecycle, OS hardening, application/platform service installation, CI/CD pipelines, secrets.
 
-### Local Environment (`terraform/envs/local/`)
+### Local Environment (`platforms/proxmox/terraform/envs/local/`)
 
 Provisions a **Proxmox LXC container** (`docker-dev`, VMID 111) on the LAN network and uses SSH provisioners to install Docker and spin up `docker-compose`. Used for developer workstation setups.
 
@@ -184,7 +197,7 @@ Services started by `docker-compose.yml`: PostgreSQL, RabbitMQ (with `definition
 
 ## Ansible
 
-### Configuration (`ansible/ansible.cfg`)
+### Configuration (`platforms/proxmox/ansible/ansible.cfg`)
 
 - Inventory: `./inventory/dev.ini`
 - Roles path: `../roles`
@@ -193,7 +206,7 @@ Services started by `docker-compose.yml`: PostgreSQL, RabbitMQ (with `definition
 - Forks: 10, fact caching (jsonfile, 1h TTL at `/tmp/ansible_facts`)
 - Logs: `./logs/ansible.log`
 
-### Inventory (`ansible/inventory/dev.ini`)
+### Inventory (`platforms/proxmox/ansible/inventory/dev.ini`)
 
 All DEV hosts — SSH via `csnp-ansible-admin-dev` bootstrap key (switches to per-host keys after `csnp.ssh_keys_create` is verified):
 
@@ -213,7 +226,7 @@ All DEV hosts — SSH via `csnp-ansible-admin-dev` bootstrap key (switches to pe
 ### Playbook Reference
 
 ```bash
-cd ansible
+cd platforms/proxmox/ansible
 
 # SSH hardening (MUST run before key rotation)
 ansible-playbook playbooks/csnp.ssh_hardening.yml
@@ -411,7 +424,7 @@ kubectl get pods -A -o wide
 kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -20
 ```
 
-**Next steps after cluster up:** RBAC + Pod Security → Ingress NGINX (`kubernetes/ingress-nginx/`) → ArgoCD (`kubernetes/argocd/`) → Prometheus + Grafana
+**Next steps after cluster up:** RBAC + Pod Security → Ingress NGINX (`platforms/proxmox/kubernetes/ingress-nginx/`) → ArgoCD (`platforms/proxmox/kubernetes/argocd/`) → Prometheus + Grafana
 
 ---
 
@@ -487,7 +500,7 @@ The `csnp_ssh_revoke_bootstrap.yml` playbook removes the bootstrap key identifie
 
 All VMs provisioned with `Asia/Ho_Chi_Minh` timezone, `en_US.UTF-8` locale (configured via `provision-common.sh`).
 
-### Docker Compose Services (`terraform/envs/local/scripts/docker/`)
+### Docker Compose Services (`platforms/proxmox/terraform/envs/local/scripts/docker/`)
 
 Spun up on `docker01-dev` or the local LXC container:
 
@@ -516,13 +529,13 @@ Spun up on `docker01-dev` or the local LXC container:
 
 ```bash
 # Provision all DEV VMs
-cd terraform/envs/dev && terraform apply
+cd platforms/proxmox/terraform/envs/dev && terraform apply
 
 # Start all DEV VMs (run from Proxmox host)
 ./ops/dev/infra-dev.sh start
 
 # Apply SSH hardening to all nodes
-cd ansible && ansible-playbook playbooks/csnp.ssh_hardening.yml
+cd platforms/proxmox/ansible && ansible-playbook playbooks/csnp.ssh_hardening.yml
 
 # Create per-host SSH keys (version v1)
 ansible-playbook playbooks/csnp.ssh_keys_create.yml -e "ssh_key_version=v1"
@@ -534,8 +547,8 @@ ansible-playbook playbooks/csnp.ssh_keys_revoke_bootstrap.yml
 ansible-playbook playbooks/install-jenkins-master.yml
 
 # Init Kubernetes cluster (from k8s-master01-dev)
-sudo ./kubernetes/kubeadm/00-init-all.sh
+sudo platforms/proxmox/kubernetes/kubeadm/00-init-all.sh
 
 # Reset Kubernetes cluster
-sudo ./kubernetes/kubeadm/reset-all.sh
+sudo platforms/proxmox/kubernetes/kubeadm/reset-all.sh
 ```

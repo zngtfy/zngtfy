@@ -2,11 +2,61 @@
 
 ## Project Overview
 
-**CSNP Fintech** is a production-grade enterprise fintech platform simulating a mini centralized exchange (CEX). Built on .NET 10 with DDD, CQRS, and event-driven microservices across 6 bounded contexts.
+**CSNP Fintech** is a production-grade enterprise fintech platform simulating a mini centralized exchange (CEX). Built on .NET 10 with DDD, CQRS, and event-driven microservices across 5 bounded contexts.
 
-**Scale:** 71 projects total — 32 source (6 services × 5 layers + Trading.Engine + Wallet.Consumer), 10 shared libraries, 6 migration projects, 23 test projects. 13 deployable containers (1 API + 1 Worker per service + 1 Wallet.Consumer).
+**Scale:** 62 projects total — 27 source (5 services × 5 layers + Trading.Engine + Wallet.Consumer), 10 shared libraries, 5 migration projects, 20 test projects. 11 deployable containers (1 API + 1 Worker per service + 1 Wallet.Consumer).
 
-**Solutions:** `CsnpFintech.sln` (master) + per-service: `CsnpWallet.sln`, `CsnpPayment.sln`, `CsnpLedger.sln`, `CsnpTrading.sln`, `CsnpPayout.sln`, `CsnpCompliance.sln`
+**Solutions:** `CsnpFintech.sln` (master) + per-service: `CsnpWallet.sln`, `CsnpPayment.sln`, `CsnpLedger.sln`, `CsnpTrading.sln`, `CsnpPayout.sln`
+
+---
+
+## Recent Changes
+
+### Resilience & Retry Logic
+
+- **Polly v7 → Microsoft.Extensions.Http.Resilience 10.5.0:** Migrated from `AddPolicyHandler` to `AddResilienceHandler` across Payment and Trading infrastructure modules. `HttpClient.Timeout` set to Infinite, delegating all timeout control to resilience layer.
+- **Circuit Breaker Fix:** FailureRatio corrected from 1.0 → 0.5 in Payment and Trading (now properly fails open after 50% failure rate, not 100%).
+- **Retry with Jitter:** Exponential backoff + jitter enabled to prevent retry storms (max 3 retries across services).
+- **Transient Error Handling:** New `TransientDbException` standardizes PostgreSQL transient errors (SQLSTATE 40001, 40P01). Polly ResiliencePipeline configured to retry `ConcurrencyConflictException` and `TransientDbException` in Wallet command handlers.
+
+### Idempotency & Concurrency
+
+- **Idempotent Outbox:** Wallet outbox messages now insert with `ON CONFLICT DO NOTHING`, preventing duplicate event publication on retry. Shadow property `idempotency_key` with partial unique index enforces idempotency at DB level.
+- **Fresh Scope per Retry:** Wallet command handlers (Debit, Credit, Withdraw, Refund) now use `IServiceScopeFactory` to create a fresh scope per retry attempt, ensuring short-lived transaction boundaries and preventing idle-in-transaction lock accumulation.
+- **Concurrency Resolution:** EF Core ChangeTracker cleared on rollback to prevent stale entity state across retries. `DbUpdateConcurrencyException` no longer leaks as HTTP 500 — mapped to 409 or handled gracefully per context.
+
+### Error Handling & HTTP Mapping
+
+- **Domain Error Abstraction:** New `IDomainError` interface provides consistent error contract across all services. `DomainException` now implements `IDomainError` with structured fields: `Code` and `Message`.
+- **Enhanced ErrorHandlingMiddleware:** Maps domain errors to proper HTTP responses. Logs unhandled exceptions for debugging.
+- **HTTP Status Mapping:**
+    - **422 Unprocessable Entity:** `InsufficientBalanceException` (trading insufficient balance), `ValidationException` (FluentValidation failures)
+    - **502 Bad Gateway:** `HttpRequestException`, `TaskCanceledException` in Payment/Trading `WalletServiceClient` (upstream Wallet service unreachable)
+    - **503 Service Unavailable:** `WalletServiceException` (wraps Polly circuit breaker open, HTTP failures)
+
+### Observability & Distributed Tracing
+
+- **W3C Trace Propagation:** `W3C traceparent` now persisted in `OutboxMessage.Metadata`, ensuring reliable trace context propagation across Kafka publish/subscribe boundaries. Kafka consumers inherit parent trace automatically.
+- **OTLP Exporter:** OpenTelemetry Protocol exporter configured, reading `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics and traces. Exemplar forwarding enabled for linking metrics to traces in observability backends.
+- **JSON Console Logging:** Structured JSON logging includes OTel trace context (trace_id, span_id) for better log aggregation in ELK/Loki stacks.
+- **Service Naming:** All services follow convention `csnp-fintech-{wallet,payment,trading,payout,ledger}` in resource attributes.
+- **Sampling Strategy:** AlwaysOn in dev (capture everything), ParentBased + TraceIdRatio(0.1) in production (10% sampled).
+- **Health Checks & Metrics:** `/health` endpoint now registered in `AddCsnpObservability()` and available in all services (API + workers). `/metrics` endpoint exposed for workers (Generic Host support), enabling Prometheus scraping of non-ASP.NET workers.
+
+### Database & Connection Management
+
+- **Connection Pool Tuning:** PostgreSQL connection pool configured: MinPoolSize=5, MaxPoolSize=200. Connection lifetime settings documented and enforced.
+- **Query Timeout:** CommandTimeout set to 10 seconds globally (prevents runaway queries).
+- **Disabled EF Core Retry:** EF Core built-in retry disabled to avoid retry amplification when combined with Polly ResiliencePipeline. Polly now sole source of retry logic.
+- **PostgreSQL Exception Wrapping:** Repositories (WalletWriteRepository, TransactionWriteRepository) now wrap native `PostgresException` in `TransientDbException` for uniform retry handling.
+
+### CI/CD Hardening
+
+- **Harbor Docker Login:** Deploy pipeline now logs into Harbor before pulling migrator image (prevents auth failures in secure registries).
+- **Migrator Skip Logic:** Build pipeline skips migrator container build and DB migration entirely when migration files are unchanged (improves deploy speed for non-schema changes).
+- **Latest Tag Push:** Docker images pushed with both versioned tag (e.g., `dev-123`) and `latest` tag for easy rollback reference.
+- **BuildKit Cache Mounts:** Dockerfile optimized with BuildKit cache mounts for apt and nuget (speeds up layer caching, reduces network I/O).
+- **Wallet Migrator Hardened:** Wallet migrator build/deploy pipeline refined with improved error handling and cleanup (docker logout, rmi, git clone --depth 1).
 
 ---
 
@@ -39,11 +89,10 @@ csnp-fintech/
 │   ├── Payment/         # 5 layers: Api, Application, Domain, Infrastructure, Worker
 │   ├── Trading/         # 6 projects: Api, Application, Domain, Infrastructure, Worker, Engine
 │   ├── Payout/          # 5 layers
-│   ├── Ledger/          # 5 layers (full impl)
-│   └── Compliance/      # 5 layers (scaffold)
+│   └── Ledger/          # 5 layers (full impl)
 ├── shared/              # 10 shared libraries
-├── migrations/          # 6 EF Core migration projects (one per service)
-├── tests/               # 23 test projects (Unit + Integration + Architecture × 6 + 5 shared)
+├── migrations/          # 5 EF Core migration projects (one per service)
+├── tests/               # 20 test projects (Unit + Integration + Architecture × 5 + 5 shared)
 ├── _environment/        # .env files per service + import scripts
 ├── docs/                # Architecture decision records and design docs
 ├── .github/workflows/   # GitHub Actions CI/CD (13 workflows: 1 reusable + 12 service-specific)
@@ -62,10 +111,6 @@ csnp-fintech/
 | **Trading**    | In-memory order matching engine, limit/market orders, spot trading        | Full impl (+ Engine layer) | `OutboxPublisherWorker`                                                             |
 | **Payout**     | External fund withdrawal processing; stuck/unknown recovery               | Full impl                  | `OutboxPublisherWorker`, `StuckPayoutRecoveryJob`, `UnknownPayoutReconciliationJob` |
 | **Ledger**     | Double-entry accounting (Account, Entry, Transaction)                     | Full impl                  | —                                                                                   |
-| **Compliance** | KYC, AML checks, Suspicious Activity Reports                              | Scaffold                   | —                                                                                   |
-
-> **Compliance** has DB schema and enums only — placeholder controller and Worker, no Application/Domain business logic.
-
 ---
 
 ## Technology Stack
@@ -77,14 +122,14 @@ csnp-fintech/
 | ORM                | Entity Framework Core + Npgsql                    | 10.0.5 / 10.0.1         |
 | Database           | PostgreSQL (shared instance, per-service schemas) | —                       |
 | Message Broker     | MassTransit + MassTransit.RabbitMQ                | 8.5.9                   |
-| Streaming (shadow) | Confluent.Kafka                                   | 2.10.0                  |
+| Streaming (shadow) | Confluent.Kafka                                   | 2.14.0                  |
 | Cache              | StackExchange.Redis — idempotency keys            | 2.12.14                 |
 | CQRS               | MediatR                                           | 14.1.0                  |
 | Validation         | FluentValidation                                  | 12.1.1                  |
 | Auth               | Keycloak (centralized SSO) + JWT Bearer           | —                       |
 | ID Generation      | IdGen (Snowflake-like distributed IDs)            | 3.0.7                   |
 | Observability      | Serilog, OpenTelemetry, Prometheus, Grafana       | OTel 1.15.x             |
-| Resilience         | Polly (HTTP retry + circuit breaker)              | —                       |
+| Resilience         | Microsoft.Extensions.Http.Resilience              | 10.5.0                  |
 | API Docs           | Swashbuckle.AspNetCore                            | 10.1.7                  |
 | Testing            | xUnit + Moq + FluentAssertions                    | 2.9.3 / 4.20.72 / 8.9.0 |
 
@@ -96,7 +141,7 @@ csnp-fintech/
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Csnp.SeedWork`                    | Pure DDD abstractions (`ValueObject`, `EmailAddress`, validators, exceptions) — no external NuGet dependencies                                                                                                                                                            |
 | `Csnp.SharedKernel.Domain`         | Base entity types (`EntityBase`, `DomainEntity<TId>`, `AuditableEntity<TId>`, `ImmutableEntity<TId>`, `PersistedEntity<TId>`); `OutboxMessage`/`InboxMessage` entities; `IDomainEvent`, `IDomainEventHandler<T>`                                                          |
-| `Csnp.SharedKernel.Application`    | `ValidationBehavior` (the **only** MediatR pipeline behavior — `LoggingBehavior`/`TransactionBehavior` do not exist); idempotency, identity, persistence, mapping, event dispatching abstractions                                                                         |
+| `Csnp.SharedKernel.Application`    | `ValidationBehavior` (the **only** MediatR pipeline behavior); `IDomainError` abstraction + `TransientDbException` for standardized error handling; idempotency, identity, persistence, mapping, event dispatching abstractions                                           |
 | `Csnp.SharedKernel.Infrastructure` | Base repositories, EF Core helpers, `OutboxPublisherWorker`, `InboxProcessorWorker`, `RedisMessageIdempotencyStore`, `KafkaEventPublisher`; DI extensions: `AddModuleApplication`, `AddPostgresDbContext`, `AddIdGenerator`, `AddMessaging<TContext>`, `AddKafkaProducer` |
 | `Csnp.SharedKernel.Configuration`  | `AddCsnpConfigurations()` settings binding, Vault file provider, typed settings classes (PostgreSQL, Redis, RabbitMQ, Keycloak, `KafkaSettings`, etc.)                                                                                                                    |
 | `Csnp.SharedKernel.Observability`  | Serilog structured logging, OpenTelemetry + Prometheus exporter, health checks                                                                                                                                                                                            |
@@ -184,9 +229,9 @@ TradeMatchedIntegrationEvent → Wallet.InboxProcessorWorker (ordered execution)
 
 - **Payment → Wallet:** `WalletServiceClient` — credits wallet after payment completes
 - **Trading → Wallet:** `IWalletServiceClient.DebitForTradingDepositAsync` → `POST /v1/wallet/{walletId}/debit-for-trading`, forwards user JWT
-  - Polly **circuit breaker:** 5 failures → open for **5 seconds** (intentionally short for fast dev recovery)
-  - Polly **retry:** 3 attempts with linear backoff (100ms, 200ms, 300ms)
-  - `BrokenCircuitException` → `WalletServiceException(503)`
+    - Polly **circuit breaker:** 5 failures → open for **5 seconds** (intentionally short for fast dev recovery)
+    - Polly **retry:** 3 attempts with linear backoff (100ms, 200ms, 300ms)
+    - `BrokenCircuitException` → `WalletServiceException(503)`
 - **Trading internal:** `IBalanceReservationService` — raw SQL atomic operations on `trading.balances` (not an HTTP call)
 
 ---
@@ -241,9 +286,9 @@ TradeMatchedIntegrationEvent → Wallet.InboxProcessorWorker (ordered execution)
 **Commands:**
 
 - `PlaceOrderCommand` — idempotency check → market rule validation → fund reservation → persist → enqueue to engine via `OrderPlacedDomainEvent`
-  - Market BUY: walks ask depth via `IMatchingEngine.GetDepth()` to calculate exact quote cost before reserving
-  - Symbol derivation: if `BaseAsset`/`QuoteAsset` not supplied, derived from symbol (`symbol[..3]` / `symbol[3..]`); symbol must be ≥ 6 chars
-  - On persist failure after reservation: auto-releases reservation (prevents permanent fund lock)
+    - Market BUY: walks ask depth via `IMatchingEngine.GetDepth()` to calculate exact quote cost before reserving
+    - Symbol derivation: if `BaseAsset`/`QuoteAsset` not supplied, derived from symbol (`symbol[..3]` / `symbol[3..]`); symbol must be ≥ 6 chars
+    - On persist failure after reservation: auto-releases reservation (prevents permanent fund lock)
 - `CancelOrderCommand` — marks order Cancelled in DB → raises `OrderCancelledDomainEvent`; returns `bool` (false → 404)
 - `DepositToTradingAccountCommand` — Step 1: HTTP debit Wallet (idempotent) → Step 2: credit `trading.balances.total_amount`
 
@@ -316,11 +361,11 @@ src/Trading/Csnp.Trading.Engine/
 - `MarketRuleController` — `GET /api/v1/market-rule/{symbol}` → `MarketRuleDto` — `[AllowAnonymous]`
 - `TradingAccountController` — `POST /api/v1/trading-account/deposit` (204), `GET /api/v1/trading-account/balance` (200)
 - `OrderController`:
-  - `POST /api/v1/order` → 202 Accepted + `PlaceOrderResponse(orderId)`
-  - `DELETE /api/v1/order/{orderId}` → 204 / 404
-  - `GET /api/v1/order/book?symbol=&levels=20` → `OrderBookDto` — `[AllowAnonymous]`
-  - `GET /api/v1/order/trades?symbol=&limit=50` → `IReadOnlyList<TradeDto>` — `[AllowAnonymous]`
-  - `GET /api/v1/order/my` → `IReadOnlyList<OrderDto>`
+    - `POST /api/v1/order` → 202 Accepted + `PlaceOrderResponse(orderId)`
+    - `DELETE /api/v1/order/{orderId}` → 204 / 404
+    - `GET /api/v1/order/book?symbol=&levels=20` → `OrderBookDto` — `[AllowAnonymous]`
+    - `GET /api/v1/order/trades?symbol=&limit=50` → `IReadOnlyList<TradeDto>` — `[AllowAnonymous]`
+    - `GET /api/v1/order/my` → `IReadOnlyList<OrderDto>`
 
 ---
 
@@ -357,18 +402,9 @@ src/Trading/Csnp.Trading.Engine/
 
 ---
 
-### Compliance (Scaffold)
-
-DB schema and enums only — placeholder controller and Worker (`Console.WriteLine` stub), no Application/Domain business logic.
-
-- **KYC enums:** `KycStatus` (NotStarted/Pending/Approved/Rejected)
-- **AML enums:** `AmlAlertStatus` (Pending/Confirmed/Cleared) + `AmlAlertEntity` (UserId, AlertType, Description, Status, Remarks) — DB schema only, no active consumers or handlers
-
----
-
 ## Database Design
 
-- **Single PostgreSQL instance**, schema-isolated per service: `wallet`, `payment`, `ledger`, `compliance`, `trading`, `payout`
+- **Single PostgreSQL instance**, schema-isolated per service: `wallet`, `payment`, `ledger`, `trading`, `payout`
 - Each service has its own `DbContext` with `.HasDefaultSchema()` and snake_case column naming
 - Separate migration history tables per service to avoid conflicts
 - Migrations in dedicated projects: `migrations/Csnp.Migrations.<Service>/`
@@ -386,6 +422,9 @@ DB schema and enums only — placeholder controller and Worker (`Console.WriteLi
 ```
 LOC_WALLET_RABBITMQ__HOST=docker-local
 LOC_WALLET_DATABASE__HOST=localhost
+LOC_WALLET_DATABASE__COMMANDTIMEOUT=10
+LOC_WALLET_DATABASE__MINPOOLSIZE=5
+LOC_WALLET_DATABASE__MAXPOOLSIZE=200
 LOC_WALLET_REDIS__HOST=docker-local
 LOC_WALLET_REDIS__PORT=6379
 LOC_WALLET_KAFKA__BOOTSTRAPSERVERS=broker:9092
@@ -394,7 +433,7 @@ LOC_WALLET_KAFKA__TOPIC=wallet.events
 
 **Import scripts:** `_environment/import-env.ps1` (PowerShell), `_environment/import-env.cmd` (CMD)
 
-**Typed settings** bound via `AddCsnpConfigurations(config, "LOC_<SERVICE>")`: PostgreSQL, Redis, RabbitMQ, Keycloak, Vault, Kafka.
+**Typed settings** bound via `AddCsnpConfigurations(config, "LOC_<SERVICE>")`: PostgreSQL (with connection pool + timeout settings), Redis, RabbitMQ, Keycloak, Vault, Kafka, OTLP endpoint.
 
 ---
 
@@ -409,6 +448,53 @@ LOC_WALLET_KAFKA__TOPIC=wallet.events
 | **Architecture** | Dependency rule enforcement                        | xUnit + NetArchTest            |
 
 **Shared test projects (5):** `Csnp.Presentation.Common.Tests.Unit`, `Csnp.SharedKernel.Application.Tests.Unit`, `Csnp.SharedKernel.Configuration.Tests.Unit`, `Csnp.SharedKernel.Infrastructure.Tests.Unit`, `Csnp.SeedWork.Tests.Unit`
+
+---
+
+## Error Handling & Domain-Driven Contracts
+
+### Domain Errors
+
+**`IDomainError` interface:**
+
+```csharp
+public interface IDomainError
+{
+    string Code { get; }
+    string Message { get; }
+}
+```
+
+**`DomainException` implements `IDomainError`:**
+
+```csharp
+public class DomainException : Exception, IDomainError
+{
+    public string Code { get; }
+    public string Message { get; }
+}
+```
+
+### HTTP Status Mapping
+
+**ErrorHandlingMiddleware** maps domain errors to structured HTTP responses:
+
+| Status                       | Condition                              | Examples                                                                                 |
+| ---------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **400 Bad Request**          | Validation or input errors             | (reserved for future use)                                                                |
+| **409 Conflict**             | Concurrency conflicts                  | `DbUpdateConcurrencyException` (xmin mismatch)                                           |
+| **422 Unprocessable Entity** | Business rule violation                | `InsufficientBalanceException`, `ValidationException` (FluentValidation)                 |
+| **502 Bad Gateway**          | Upstream service unavailable           | `HttpRequestException`, `TaskCanceledException` in WalletServiceClient (Payment/Trading) |
+| **503 Service Unavailable**  | Circuit breaker open or internal error | `WalletServiceException` (Polly circuit open, wrapped HTTP failures)                     |
+
+### Transient Database Errors
+
+**`TransientDbException`** wraps PostgreSQL transient states (SQLSTATE 40001, 40P01):
+
+- **40001 — Serialization Failure:** Conflicting transactions at SERIALIZABLE or REPEATABLE READ isolation. Polly retries automatically with fresh transaction.
+- **40P01 — Deadlock Detected:** Lock ordering conflict. Polly retries with fresh transaction, different lock ordering often resolves immediately.
+
+Polly ResiliencePipeline configured with exponential backoff + jitter (max 3 retries) for both `ConcurrencyConflictException` and `TransientDbException`.
 
 ---
 
@@ -428,6 +514,14 @@ LOC_WALLET_KAFKA__TOPIC=wallet.events
 3. Build → Push to Harbor (`harbor-dev.csnp.xyz`)
 4. Update GitOps repo (Kustomize `newTag`)
 5. Vault integration for secrets
+
+### CI/CD Hardening
+
+- **Docker Login to Harbor:** Deploy pipeline now authenticates to Harbor before pulling migrator image (prevents auth failures in secure registries).
+- **Migrator Skip Logic:** Build skips migrator build + DB migration when migration files are unchanged (improves deploy speed for non-schema changes).
+- **Latest Tag Push:** Images pushed with both versioned tag (e.g., `dev-123`) and `latest` tag for easy rollback reference.
+- **BuildKit Cache Mounts:** Dockerfile optimized with BuildKit cache mounts for `apt` and `nuget` (speeds up layer caching, reduces network I/O).
+- **Wallet Migrator Hardened:** Improved error handling, cleanup (`docker logout`, `rmi`, `git clone --depth 1`).
 
 ---
 

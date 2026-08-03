@@ -2,7 +2,7 @@
 
 ## Overview
 
-Docker Compose-based microservices deployment for the CSNP (Credential Service Notification Platform) fintech system. Only nginx-ingress binds to the host (port 80 for DEV, port 81 for UAT); all microservices communicate exclusively over internal Docker bridge networks. Supports DEV and UAT environments using a base + overlay composition pattern.
+Docker Compose-based microservices deployment for the CSNP (Core Services Network Platform) fintech system. Only nginx-ingress binds to the host (port 80 for DEV, port 81 for UAT); all microservices communicate exclusively over internal Docker bridge networks. Supports DEV and UAT environments using a base + overlay composition pattern.
 
 ---
 
@@ -14,6 +14,7 @@ d:\CSNP\GitOps\csnp-gitops_docker/
 ├── csnp-gitops-platform/      # Platform services (Credential, Notification, MobileBFF)
 ├── csnp-gitops-fintech/       # Fintech services (Payment, Wallet, Trading, etc.)
 ├── csnp-gitops-compliance/    # Compliance services (api-compliance, consumer-compliance)
+├── csnp-gitops-monitoring/    # Observability: Prometheus + Grafana
 ├── csnp-gitops-web/           # Frontend: ui-web (Next.js)
 └── csnp-gitops-admin/         # Frontend: ui-admin (Angular)
 ```
@@ -60,6 +61,26 @@ compose/
 | api-compliance       | Go API      | 8080       |
 | consumer-compliance  | Go Worker   | —          |
 
+### Monitoring (csnp-gitops-monitoring)
+
+| Service | Type | Port (internal) |
+|---------|------|-----------------|
+| prometheus | `prom/prometheus:v3.11.2` | 9090 |
+| grafana | `grafana/grafana:13.0.1` | 3000 |
+| alertmanager | `prom/alertmanager:v0.32.0` | 9093 |
+| loki | `grafana/loki:3.7.1` | 3100 |
+| promtail | `grafana/promtail:3.6.10` | 9080 |
+| tempo | `grafana/tempo:2.10.4` | 3200 / 4317 |
+| otel-collector | `otel/opentelemetry-collector-contrib:0.150.1` | 4317 |
+
+- Base stack is defined in `compose/base/monitoring/docker-compose.yaml` and the active environment overlay is currently `compose/pro/monitoring/docker-compose.yaml`
+- Config via bind-mounts (not image-baked): `config/prometheus-pro.yml`, `config/alertmanager/alertmanager.yml`, `config/loki.yaml`, `config/promtail.yaml`, `config/tempo.yaml`, `config/otel-collector.yaml`, and `config/grafana/provisioning/`
+- Named volumes: `prometheus-data`, `grafana-data`, `tempo-data`, `loki-data`, `alertmanager-data`
+- Prometheus scrapes all three environments (`dev`, `uat`, `pro`) and forwards alerts to standalone Alertmanager
+- Grafana provisions Prometheus, Loki, and Tempo datasources automatically and loads dashboards from `config/grafana/dashboards/`
+- Logs flow through `promtail -> loki`; traces flow through `otel-collector -> tempo`
+- **Prerequisite for metrics**: services need Prometheus-compatible `/metrics` endpoints so Prometheus can scrape them
+
 ### Web (csnp-gitops-web)
 - **ui-web** — Next.js; port 3000
 
@@ -68,7 +89,7 @@ compose/
 - Runtime config via bind-mounted `appsettings.Production.json` (gitignored, per-env)
 - Image must include `RUN touch /usr/share/nginx/html/appsettings.Production.json` (Linux bind-mount requirement)
 
-**Total**: ~22 containers per environment (10 APIs + 8 workers + 3 frontends + 1 ingress)
+**Total**: monitoring now adds 7 observability containers on top of the application stack.
 
 ---
 
@@ -80,6 +101,8 @@ compose/
 | APIs / Workers | .NET Core / C# |
 | Frontend (web) | Next.js (Node.js) |
 | Frontend (admin) | Angular (served by nginx) |
+| Metrics collection | Prometheus v3.11.2 |
+| Dashboards | Grafana 13.0.1 |
 | Auth | Keycloak (external) |
 | Message Queue | RabbitMQ (external) |
 | Event Streaming | Kafka (external, compliance + consumer-wallet) |
@@ -116,6 +139,8 @@ compose/
 | `admin-dev.csnp.xyz` | `/` | `csnp-dev-ui-admin:80` |
 | `zor-dev.csnp.xyz` | `/` | `csnp-dev-zor-presentation:80` |
 | `dev.csnp.xyz` | `/` | `csnp-dev-ui-web:3000` |
+| `prometheus.csnp.xyz` | `/` | `csnp-dev-prometheus:9090` |
+| `grafana.csnp.xyz` | `/` | `csnp-dev-grafana:3000` |
 
 ### Nginx Routing (UAT)
 
@@ -133,6 +158,8 @@ compose/
 | `admin-uat.csnp.xyz` | `/` | `csnp-uat-ui-admin:80` |
 | `zor-uat.csnp.xyz` | `/` | `csnp-uat-zor-presentation:80` |
 | `uat.csnp.xyz` | `/` | `csnp-uat-ui-web:3000` |
+| `prometheus-uat.csnp.xyz` | `/` | `csnp-uat-prometheus:9090` |
+| `grafana-uat.csnp.xyz` | `/` | `csnp-uat-grafana:3000` |
 
 Path prefixes are stripped before forwarding (e.g., `/credential/foo` → `/foo`).
 
@@ -153,14 +180,14 @@ LOC_<SERVICE>_<CATEGORY>__<PROPERTY>
 Examples:
   LOC_CREDENTIAL_DATABASE__HOST
   LOC_PAYMENT_RABBITMQ__PORT
-  LOC_WALLET_KEYCLOAK__CLIENTSECRET
+  LOC_WALLET_INTERNALJWT__JWKSURI
   LOC_TRADING_REDIS__HOST
   LOC_COMPLIANCE_KAFKA__BOOTSTRAPSERVERS
   LOC_COMPLIANCE_MONGO__URI
   LOC_MOBILEBFF_DOWNSTREAMSERVICES__CREDENTIAL
 ```
 
-**Categories**: `DATABASE__*`, `RABBITMQ__*`, `REDIS__*`, `KEYCLOAK__*`, `KAFKA__*`, `MONGO__*`, `DOWNSTREAMSERVICES__*`, `HTTP__*`, `MINIO__*`, `EMAIL__*`, `PAYPAL__*`, `STRIPE__*`, `CORS__ALLOWEDORIGINS`
+**Categories**: `DATABASE__*`, `RABBITMQ__*`, `REDIS__*`, `INTERNALJWT__*`, `KEYCLOAK__*`, `KAFKA__*`, `MONGO__*`, `DOWNSTREAMSERVICES__*`, `HTTP__*`, `MINIO__*`, `EMAIL__*`, `PAYPAL__*`, `STRIPE__*`, `CORS__ALLOWEDORIGINS`
 
 ### Secrets (`.env` files)
 
@@ -200,11 +227,12 @@ Logging: `json-file`, max 10MB per file, 3 rotated files.
 - `csnp-gitops-root/deploy-dev.sh` — deploys all services in correct order for DEV
 - `csnp-gitops-root/deploy-uat.sh` — same for UAT
 - Can target a single service: `bash deploy-dev.sh api-payment`
+- Monitoring deploys as one unit: `bash deploy-dev.sh monitoring` (starts both prometheus + grafana)
 
 ### First-Time Setup
 
 1. Install Docker on Ubuntu 22.04/24.04 host
-2. Clone all 6 repos directly into `~` (no subdirectory): root, platform, fintech, compliance, web, admin
+2. Clone all 7 repos directly into `~` (no subdirectory): root, platform, fintech, compliance, monitoring, web, admin
 3. Configure SSH multi-key for GitHub (`git@github-root-dev:`, `git@github-platform-dev:`, `git@github-compliance-dev:`, etc.)
 4. Create `.registry.env` from `.registry.env.example` and fill in Harbor credentials
 5. Copy `.env.example` → `.env` for each service and fill in secrets
@@ -244,6 +272,8 @@ All services expose health endpoints used by Docker `healthcheck`:
 - `.NET APIs`: `GET http://<container>:8080/health` (interval 30s, timeout 10s, start_period 20s)
 - `ui-web`: `GET http://<container>:3000/`
 - `nginx-ingress`: `GET http://localhost/nginx-health`
+- `prometheus`: `wget -qO- http://localhost:9090/-/healthy`
+- `grafana`: `wget -qO- http://localhost:3000/api/health`
 
 ---
 
@@ -255,6 +285,7 @@ All services expose health endpoints used by Docker `healthcheck`:
 | csnp-gitops-platform | `git@github-platform-dev:skg-csnp/csnp-gitops-platform.git` |
 | csnp-gitops-fintech | `git@github-fintech-dev:skg-csnp/csnp-gitops-fintech.git` |
 | csnp-gitops-compliance | `git@github-compliance-dev:skg-csnp/csnp-gitops-compliance.git` |
+| csnp-gitops-monitoring | `git@github-monitoring-dev:skg-csnp/csnp-gitops-monitoring.git` |
 | csnp-gitops-web | `git@github-web-dev:skg-csnp/csnp-gitops-web.git` |
 | csnp-gitops-admin | `git@github-admin-dev:skg-csnp/csnp-gitops-admin.git` |
 
@@ -264,7 +295,7 @@ All services expose health endpoints used by Docker `healthcheck`:
 
 1. **Docker-native ingress** — eliminates Kubernetes while keeping zero exposed microservice ports
 2. **Base + overlay composition** — DRY config; base is environment-agnostic, overlays add concrete values
-3. **No persistent volumes** — logs only; data lives in external SQL Server / MongoDB
+3. **No persistent volumes for app services** — logs only; data lives in external SQL Server / MongoDB. Exception: monitoring uses named volumes (`prometheus-data`, `grafana-data`) for metrics and dashboard persistence
 4. **Async communication via RabbitMQ** — APIs publish events, workers consume independently
 5. **Kafka for compliance/wallet event streaming** — `consumer-wallet` and compliance services consume from Kafka topics instead of RabbitMQ
 6. **Inter-service HTTP via edge proxy** — e.g., `api-mobilebff` calls `api-wallet` through `https://api-dev.csnp.xyz/wallet/`, not direct container-to-container

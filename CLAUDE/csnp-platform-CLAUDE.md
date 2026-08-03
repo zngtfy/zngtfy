@@ -2,7 +2,7 @@
 
 ## Quick Reference
 
-**CSNP Platform** (Core Security Network Platform) is a production-grade, cloud-native microservices platform built on **.NET 10**, following **DDD**, **Clean Architecture**, **CQRS**, and **Event-Driven** patterns. It is the identity, notification, and mobile backend backbone for the broader CSNP ecosystem.
+**CSNP Platform** (Core Services Network Platform) is a production-grade, cloud-native microservices platform built on **.NET 10**, following **DDD**, **Clean Architecture**, **CQRS**, and **Event-Driven** patterns. It is the identity, notification, and mobile backend backbone for the broader CSNP ecosystem.
 
 |                   |                                                      |
 | ----------------- | ---------------------------------------------------- |
@@ -21,6 +21,53 @@
 **Solution files:** `CsnpPlatform.sln` (all), `CsnpCredential.sln`, `CsnpNotification.sln`, `CsnpMobilebff.sln`
 
 **Total projects:** 37 (.csproj) — 10 shared libs, 13 service projects, 1 SPA, 2 migrations, 11 tests
+
+---
+
+## Recent Changes
+
+### Database & Connection Management
+
+- **Connection Pool Tuning:** PostgreSQL configured with MinPoolSize=5, MaxPoolSize=200
+- **Query Timeout:** CommandTimeout set to 10 seconds globally (prevents runaway queries)
+- **TransientDbException:** Standardizes PostgreSQL transient errors (SQLSTATE 40001, 40P01) for Polly retry handling
+- **Disabled EF Core Retry:** Built-in retry disabled to avoid retry amplification with Polly ResiliencePipeline
+
+### Error Handling
+
+- **IDomainError Abstraction:** New interface provides consistent error contract across services
+- **Domain Error Mapping:** Enhanced `ErrorHandlingMiddleware` maps errors to proper HTTP responses:
+    - **422 Unprocessable Entity:** `ValidationException` (FluentValidation failures)
+    - **503 Service Unavailable:** Service integration failures
+
+### Observability & Tracing
+
+- **W3C Trace Propagation:** `traceparent` persisted in `OutboxMessage.Metadata` for reliable distributed tracing
+- **OTLP Exporter:** Reads `OTEL_EXPORTER_OTLP_ENDPOINT` for metrics/traces with exemplar forwarding
+- **Service Naming:** Follows convention `csnp-platform-{credential,notification,mobilebff}`
+- **Sampling:** AlwaysOn in dev, ParentBased+TraceIdRatio(0.1) in production
+- **Health Checks:** `/health`, `/health/live`, `/health/ready` available in all services
+- **Metrics Endpoint:** `/metrics` exposed for workers (Generic Host support) for Prometheus scraping
+
+---
+
+## Technology Stack
+
+| Category       | Technology / Package                              | Version                 |
+| -------------- | ------------------------------------------------- | ----------------------- |
+| Runtime        | .NET / ASP.NET Core                               | 10.0                    |
+| Language       | C# (nullable reference types enabled)             | 13                      |
+| ORM            | Entity Framework Core + Npgsql                    | 10.0.5 / 10.0.1         |
+| Database       | PostgreSQL (shared instance, per-service schemas) | —                       |
+| Message Broker | MassTransit + MassTransit.RabbitMQ                | 8.5.8                   |
+| Cache          | StackExchange.Redis — idempotency keys            | 2.12.14                 |
+| CQRS           | MediatR                                           | 14.1.0                  |
+| Validation     | FluentValidation                                  | 12.1.1                  |
+| Auth           | Keycloak (centralized SSO) + JWT Bearer           | —                       |
+| ID Generation  | IdGen (Snowflake-like distributed IDs)            | 3.0.7                   |
+| Observability  | Serilog, OpenTelemetry, Prometheus, Grafana       | OTel 1.15.x             |
+| API Docs       | Swashbuckle.AspNetCore                            | 10.1.7                  |
+| Testing        | xUnit + Moq + FluentAssertions                    | 2.9.3 / 4.20.72 / 8.9.0 |
 
 ---
 
@@ -64,20 +111,28 @@ Infrastructure (EF Core, Repositories, External Services)
 
 ## Shared Libraries (`shared/`)
 
-| Library                            | Purpose / Key Types                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Csnp.SeedWork`                    | Pure DDD, no EF Core: `ValueObject`, `EmailAddress`, `InvalidEmailException`, domain exceptions                                                                                                                                                                                                                                                                                                                                 |
-| `Csnp.SharedKernel.Domain`         | Base entity hierarchy: `EntityBase<TId>`, `DomainEntity<TId>`, `AuditableEntity<TId>`, `ImmutableEntity<TId>`, `PersistedEntity<TId>`, `IAggregateRoot`, `IDomainEvent`, `IDomainHandler<T>`, `OutboxMessage`, `InboxMessage`, `MessageStatus`                                                                                                                                                                                  |
-| `Csnp.SharedKernel.Application`    | `ValidationBehavior<,>` (only MediatR behavior registered); abstractions: `IReadRepository<>`, `IWriteRepository<>`, `IUnitOfWork<>`, `ICompositeDomainEventDispatcher`, `IDomainToIntegrationDispatcher`, `IExternalUserSynchronizer`, `IAggregateMapper`, `IMessageIdempotencyStore`, `IWebhookIdempotencyStore`; impl: `CompositeDomainEventDispatcher`; exceptions: `ConcurrencyConflictException`, `DuplicateKeyException` |
-| `Csnp.SharedKernel.Infrastructure` | `ReadRepositoryBase<>`, `WriteRepositoryBase<>`, `UnitOfWork<>`, `OutboxPublisherWorker`, `OutboxMessageRepository`, `InboxMessageRepository`, `InboxDlqMessageEntity`, `RedisMessageIdempotencyStore`, `RedisWebhookIdempotencyStore`, `DomainEventHandlerDispatcher`; DI: `AddModuleApplication`, `AddPostgresDbContext`, `AddIdGenerator`, `AddMessaging<TContext>`, `AddOutbox<TContext>`                                   |
-| `Csnp.SharedKernel.Configuration`  | `AddCsnpConfigurations`, `AddCsnpWorkerConfiguration`, `VaultFileConfigurationProvider`; typed settings: `PostgreSqlSettings`, `RedisSettings`, `RabbitMqSettings`, `KeycloakSettings`, `MinioSettings`, `EmailSettings`, `JwtSettings`, `CorsSettings`, `DocumentationSettings`                                                                                                                                                |
-| `Csnp.SharedKernel.Observability`  | `AddCspnObservability()`, `UseCspnObservability()` — wires Serilog, OpenTelemetry, health checks (`/health`, `/health/live`, `/health/ready`)                                                                                                                                                                                                                                                                                   |
-| `Csnp.Contracts`                   | Integration event DTOs shared with `csnp-fintech` — see [Integration Events](#integration-events)                                                                                                                                                                                                                                                                                                                               |
-| `Csnp.EventBus`                    | MassTransit/RabbitMQ abstractions: `IIntegrationEventPublisher`, `IIntegrationHandler<T>`, `IIntegrationEventMetadata<T>`, `RabbitMqPublisher`, `MassTransitExtensions`, `MassTransitEndpointExtensions`                                                                                                                                                                                                                        |
-| `Csnp.Presentation.Common`         | `BaseV1Controller` (injects `IMediator`), `ApiResponse<T>`, `ApiResponseFactory`, `ErrorHandlingMiddleware`, `ValidationFilter`, `CommonServiceExtensions`, `CommonPipelineExtensions`, `CorsExtensions`, `DocumentationExtensions`                                                                                                                                                                                             |
-| `Csnp.Security.Infrastructure`     | `AddKeycloakJwtAuthentication()`, `AddExternalUserSynchronization()` middleware                                                                                                                                                                                                                                                                                                                                                 |
+| Library                            | Purpose                                                                                                                                                                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Csnp.SeedWork`                    | Pure DDD abstractions (`ValueObject`, `EmailAddress`, validators, exceptions) — no external NuGet dependencies                                                                                                                                                            |
+| `Csnp.SharedKernel.Domain`         | Base entity types (`EntityBase`, `DomainEntity<TId>`, `AuditableEntity<TId>`, `ImmutableEntity<TId>`, `PersistedEntity<TId>`); `OutboxMessage`/`InboxMessage` entities; `IDomainEvent`, `IDomainEventHandler<T>`                                                          |
+| `Csnp.SharedKernel.Application`    | `ValidationBehavior` (the **only** MediatR pipeline behavior); `IDomainError` abstraction + `TransientDbException` for standardized error handling; idempotency, identity, persistence, mapping, event dispatching abstractions                                           |
+| `Csnp.SharedKernel.Infrastructure` | Base repositories, EF Core helpers, `OutboxPublisherWorker`, `InboxProcessorWorker`, `RedisMessageIdempotencyStore`, `KafkaEventPublisher`; DI extensions: `AddModuleApplication`, `AddPostgresDbContext`, `AddIdGenerator`, `AddMessaging<TContext>`, `AddKafkaProducer` |
+| `Csnp.SharedKernel.Configuration`  | `AddCsnpConfigurations()` settings binding, Vault file provider, typed settings classes (PostgreSQL, Redis, RabbitMQ, Keycloak, `KafkaSettings`, etc.)                                                                                                                    |
+| `Csnp.SharedKernel.Observability`  | Serilog structured logging, OpenTelemetry + Prometheus exporter, health checks                                                                                                                                                                                            |
+| `Csnp.Contracts`                   | All cross-service integration event DTOs (no external NuGet dependencies)                                                                                                                                                                                                 |
+| `Csnp.EventBus`                    | MassTransit + RabbitMQ abstractions: `IIntegrationEventPublisher`, `IIntegrationHandler<T>`, `ConfigureCsnpConsumerEndpoint()`                                                                                                                                            |
+| `Csnp.Presentation.Common`         | `BaseV1Controller`, `ApiResponse<T>`, `ApiResponseFactory`, `ErrorHandlingMiddleware`, CORS, Swagger; `CommonServiceExtensions`, `CommonPipelineExtensions`                                                                                                               |
+| `Csnp.Security.Infrastructure`     | `AddKeycloakJwtAuthentication()` — Keycloak JWT Bearer configuration                                                                                                                                                                                                      |
 
-> **MediatR pipeline:** Only `ValidationBehavior` is registered via `AddModuleApplication()`. Do **not** add `LoggingBehavior` or `PerformanceBehavior` unless explicitly asked.
+**Key Abstractions:**
+
+- **`IDomainError`** — Consistent error contract across all services (structured `Code` + `Message` fields)
+- **`TransientDbException`** — Standardizes PostgreSQL transient errors (SQLSTATE 40001, 40P01) for retry handling
+- **`IReadRepository<>`, `IWriteRepository<>`, `IUnitOfWork<>`** — Core persistence abstractions
+- **`ICompositeDomainEventDispatcher`, `IDomainToIntegrationDispatcher`** — Event dispatching bridge
+- **`IMessageIdempotencyStore`** — Redis-backed idempotency (keys by request ID)
+
+**MediatR:** Only `ValidationBehavior` registered via `AddModuleApplication()`. Do NOT add logging or performance behaviors unless explicitly asked.
 
 ---
 

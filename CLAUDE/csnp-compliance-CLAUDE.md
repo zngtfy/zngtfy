@@ -25,7 +25,7 @@ internal/
     swagger.go         ← embedded Swagger UI + OpenAPI spec at /swagger/
     v1/
       compliance_controller.go  ← GET /v1/wallets/{id}/compliance, GET /v1/aml/alerts, PATCH /v1/wallets/{id}/kyc/status
-    middleware/auth.go ← JWT validation via Keycloak JWKS; no-auth dev mode when JWKSURI is empty
+    middleware/auth.go ← JWT validation via CSNP Identity Internal JWT JWKS; no-auth dev mode when JWKSURI is empty
     dto/compliance.go  ← ComplianceStatusResponse, AmlAlertResponse, PagedResponse[T], UpdateKycStatusRequest
   consumer/compliance_consumer.go  ← Kafka poll loop, event dispatch, graceful shutdown
   handler/
@@ -68,6 +68,8 @@ LOC_COMPLIANCE_MONGO__URI
 LOC_COMPLIANCE_MONGO__DATABASE
 LOC_COMPLIANCE_HTTP__PORT          (default 5201)
 LOC_COMPLIANCE_HTTP__JWKSURI       (empty = dev no-auth mode)
+LOC_COMPLIANCE_HTTP__JWTISSUER
+LOC_COMPLIANCE_HTTP__JWTAUDIENCE
 LOC_COMPLIANCE_CORS__ALLOWEDORIGINS
 LOC_COMPLIANCE_DOCUMENTATION__ENABLESWAGGER
 ```

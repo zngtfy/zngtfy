@@ -13,7 +13,7 @@ See `NEXTJS_SOURCE.md` for the full Next.js → Angular mapping guide and source
 | --------------- | ------------------------------------------------------ |
 | Framework       | Angular 21.2.x (standalone components)                 |
 | Language        | TypeScript 6.0.x (strict mode)                         |
-| Auth            | Keycloak 26.x (OpenID Connect / PKCE) — client-side    |
+| Auth            | OpenID Connect / OAuth 2.0 with PKCE — client-side     |
 | Styling         | Tailwind CSS 3.4.x + global `styles.css`               |
 | Real-time       | Microsoft SignalR (`@microsoft/signalr` ^10)           |
 | Charts          | `lightweight-charts` ^5.1.0                            |
@@ -54,17 +54,19 @@ pnpm format:check   # Prettier check
 ```text
 src/app/
 ├── core/
-│   ├── guards/           auth.guard.ts
+│   ├── guards/           auth.guard.ts · role.guard.ts
 │   ├── interceptors/     auth.interceptor.ts
 │   └── services/         auth.service.ts · auth-bootstrap.service.ts
 │                         runtime-config.service.ts · timezone.service.ts
-│                         user.service.ts · wallet.service.ts
+│                         wallet.service.ts
 │                         payment.service.ts · trading.service.ts
 │                         trading-signalr.service.ts · compliance.service.ts
+│                         role.service.ts · admin-user.service.ts
 ├── shared/
 │   ├── header/           header.component.ts
 │   ├── models/           auth.model.ts · runtime-config.model.ts
 │   │                     wallet.model.ts · trading.model.ts · compliance.model.ts
+│   │                     admin-user.model.ts
 │   └── services/         local-storage.service.ts · session-storage.service.ts
 ├── auth/                 sign-in/ · sign-up/ · callback/
 ├── home/                 home.component.ts
@@ -72,6 +74,8 @@ src/app/
 ├── trading/              trading.component.ts · candlestick-chart/
 ├── payment/              success/ · cancel/
 ├── compliance/           compliance.component.ts · review/
+├── user-management/      user-management.component.ts · create/
+├── unauthorized/         unauthorized.component.ts
 ├── app.ts                AppComponent (root shell)
 ├── app.html
 ├── app.routes.ts
@@ -90,14 +94,12 @@ public/
 
 ```json
 {
-  "credentialApiUrl": "http://localhost:5001/",
-  "paymentApiUrl": "http://localhost:5103/",
-  "tradingApiUrl": "http://localhost:5105/",
-  "walletApiUrl": "http://localhost:5106/",
-  "complianceApiUrl": "http://localhost:5201/",
-  "keycloakIssuer": "https://idp-dev.csnp.xyz/realms/csnp-local",
-  "keycloakClientId": "ui-admin",
-  "keycloakScope": "openid profile email credential-scope payment-scope trading-scope wallet-scope compliance-scope"
+  "bffAdminApiUrl": "/api/",
+  "tradingApiUrl": "https://api-dev.csnp.xyz/trading/",
+  "authProvider": "keycloak",
+  "authIssuer": "https://idp-dev.csnp.xyz/realms/csnp-local",
+  "authClientId": "ui-admin",
+  "authScope": "openid profile email bff-admin-scope"
 }
 ```
 
@@ -112,8 +114,8 @@ The SignalR hub URL is derived from `tradingApiUrl` — no separate field needed
 
 1. **`RuntimeConfigService.load()`** — fetch `runtime-config.json`
 2. **`AuthService.initialize()`** — restore tokens from `sessionStorage`; auto-refresh if expired
-3. **`AuthBootstrapService.bootstrap()`** — call `GET /v1/user/me`; if `requiresTokenRefresh=true`
-   → refresh Keycloak tokens so the new JWT contains `user_id` → sets `ready = true`
+3. **`AuthBootstrapService.bootstrap()`** — marks `ready = true` once an external identity-provider access token exists.
+   Identity onboarding is handled by BFF protected business routes.
 
 `AuthBootstrapService.ready` is a `signal<boolean>` backed by **module-level variables** so it
 survives component recreation. `bootstrap()` sets `ready = true` even on error to prevent an app
@@ -124,21 +126,21 @@ hang. Components that need wallet/trading data gate their API calls behind
 
 ### Authentication (`AuthService`)
 
-Full Keycloak PKCE flow. **Tokens are stored in both in-memory signals and `sessionStorage`**
+Provider-neutral OAuth 2.0 Authorization Code flow with PKCE. **Tokens are stored in both in-memory signals and `sessionStorage`**
 (persisted so page refreshes do not require re-login). PKCE `code_verifier` and `state` are
 also in `sessionStorage` transiently.
 
-| Signal / Method                 | Purpose                                                             |
-| ------------------------------- | ------------------------------------------------------------------- |
-| `isAuthenticated` (computed)    | `true` when token exists and not expired                            |
-| `userEmail` (computed)          | Decoded from JWT access token                                       |
-| `accessToken` (signal)          | Raw JWT bearer token                                                |
-| `initialize()`                  | Restore tokens from sessionStorage; refresh if expired (idempotent) |
-| `redirectToLogin(callbackUrl?)` | Generate PKCE challenge → redirect to Keycloak `/auth`              |
-| `redirectToRegister()`          | Redirect to Keycloak `/registrations`                               |
-| `handleCallback(code, state)`   | Exchange code for tokens; validates state; clears verifier          |
-| `refreshTokens()`               | POST to Keycloak `/token` with `refresh_token`                      |
-| `logout()`                      | Clear signals + sessionStorage → redirect to Keycloak end-session   |
+| Signal / Method                 | Purpose                                                                     |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| `isAuthenticated` (computed)    | `true` when token exists and not expired                                    |
+| `userEmail` (computed)          | Decoded from JWT access token                                               |
+| `accessToken` (signal)          | Raw JWT bearer token                                                        |
+| `initialize()`                  | Restore tokens from sessionStorage; refresh if expired (idempotent)         |
+| `redirectToLogin(callbackUrl?)` | Generate PKCE challenge → redirect to the configured authorization endpoint |
+| `redirectToRegister()`          | Redirect to the configured registration endpoint                            |
+| `handleCallback(code, state)`   | Exchange code for tokens; validates state; clears verifier                  |
+| `refreshTokens()`               | POST to the configured token endpoint with `refresh_token`                  |
+| `logout()`                      | Clear signals + sessionStorage → redirect to the configured logout endpoint |
 
 **`AuthInterceptor`** (functional): adds `Authorization: Bearer …` + `x-correlation-id` (UUID v4)
 on every request. On 401: single-flight refresh lock (one refresh at a time, others wait); retries
@@ -154,22 +156,25 @@ if not authenticated.
 
 All routes use lazy loading (`loadComponent`).
 
-| Path                    | Component             | Guard       |
-| ----------------------- | --------------------- | ----------- |
-| `/`                     | `HomeComponent`       | —           |
-| `/sign-in`              | `SignInComponent`     | —           |
-| `/sign-up`              | `SignUpComponent`     | —           |
-| `/auth/callback`        | `CallbackComponent`   | —           |
-| `/trading`              | `TradingComponent`    | —           |
-| `/wallet`               | `WalletComponent`     | `authGuard` |
-| `/wallet/topup`         | `TopupComponent`      | `authGuard` |
-| `/wallet/transfer`      | `TransferComponent`   | `authGuard` |
-| `/wallet/withdraw`      | `WithdrawComponent`   | `authGuard` |
-| `/payment/success`      | `SuccessComponent`    | `authGuard` |
-| `/payment/cancel`       | `CancelComponent`     | `authGuard` |
-| `/compliance`           | `ComplianceComponent` | `authGuard` |
-| `/compliance/:walletId` | `ReviewComponent`     | `authGuard` |
-| `**`                    | Redirect → `/`        | —           |
+| Path                    | Component                 | Guard                                                                 |
+| ----------------------- | ------------------------- | --------------------------------------------------------------------- |
+| `/`                     | `HomeComponent`           | —                                                                     |
+| `/sign-in`              | `SignInComponent`         | —                                                                     |
+| `/sign-up`              | `SignUpComponent`         | —                                                                     |
+| `/auth/callback`        | `CallbackComponent`       | —                                                                     |
+| `/unauthorized`         | `UnauthorizedComponent`   | —                                                                     |
+| `/trading`              | `TradingComponent`        | —                                                                     |
+| `/wallet`               | `WalletComponent`         | `authGuard`                                                           |
+| `/wallet/topup`         | `TopupComponent`          | `authGuard`                                                           |
+| `/wallet/transfer`      | `TransferComponent`       | `authGuard`                                                           |
+| `/wallet/withdraw`      | `WithdrawComponent`       | `authGuard`                                                           |
+| `/payment/success`      | `SuccessComponent`        | `authGuard`                                                           |
+| `/payment/cancel`       | `CancelComponent`         | `authGuard`                                                           |
+| `/compliance`           | `ComplianceComponent`     | `authGuard, roleGuard([compliance_read_roles])`                       |
+| `/compliance/:walletId` | `ReviewComponent`         | `authGuard, roleGuard([compliance_read_roles])`                       |
+| `/users`                | `UserManagementComponent` | `authGuard, roleGuard(['csnp.backoffice_admin', 'csnp.super_admin'])` |
+| `/users/create`         | `CreateUserComponent`     | `authGuard, roleGuard(['csnp.backoffice_admin', 'csnp.super_admin'])` |
+| `**`                    | Redirect → `/`            | —                                                                     |
 
 `/trading` is public — unauthenticated users see the page but a "log in to trade" prompt replaces
 the order form.
@@ -178,43 +183,47 @@ the order form.
 
 ### Services
 
-| Service                 | Location           | Responsibility                                         |
-| ----------------------- | ------------------ | ------------------------------------------------------ |
-| `RuntimeConfigService`  | `core/services/`   | Load & provide runtime-config.json values              |
-| `AuthService`           | `core/services/`   | Keycloak PKCE tokens, redirect, refresh, logout        |
-| `AuthBootstrapService`  | `core/services/`   | `GET /v1/user/me`, `ready` signal, module-level state  |
-| `UserService`           | `core/services/`   | `me()` → `GET /v1/user/me`                             |
-| `WalletService`         | `core/services/`   | Wallets, transactions, transfer, withdraw              |
-| `PaymentService`        | `core/services/`   | `topUp()` → `POST /v1/payment/{walletId}/topup`        |
-| `TradingService`        | `core/services/`   | Order book, orders, trades, place/cancel, deposits     |
-| `TradingSignalRService` | `core/services/`   | SignalR hub connection, symbol subscriptions           |
-| `ComplianceService`     | `core/services/`   | AML alerts, KYC/compliance status, update KYC status   |
-| `TimezoneService`       | `core/services/`   | IANA timezone signal, `formatTxDateTime()`             |
-| `LocalStorageService`   | `shared/services/` | Typed localStorage wrapper (language key)              |
-| `SessionStorageService` | `shared/services/` | Typed sessionStorage wrapper (PKCE, tokens, tx_wallet) |
+| Service                 | Location           | Responsibility                                                         |
+| ----------------------- | ------------------ | ---------------------------------------------------------------------- |
+| `RuntimeConfigService`  | `core/services/`   | Load & provide runtime-config.json values                              |
+| `AuthService`           | `core/services/`   | OIDC/OAuth tokens, redirect, refresh, logout                           |
+| `AuthBootstrapService`  | `core/services/`   | `ready` signal, module-level state                                     |
+| `RoleService`           | `core/services/`   | Parse `csnp.*` roles from JWT, role checking, computed RBAC properties |
+| `AdminUserService`      | `core/services/`   | Admin user CRUD — list, create, update roles, delete                   |
+| `WalletService`         | `core/services/`   | Wallets, transactions, transfer, withdraw                              |
+| `PaymentService`        | `core/services/`   | `topUp()` → `POST /api/v1/payments/topups`                             |
+| `TradingService`        | `core/services/`   | Order book, orders, trades, place/cancel, deposits                     |
+| `TradingSignalRService` | `core/services/`   | SignalR hub connection, symbol subscriptions                           |
+| `ComplianceService`     | `core/services/`   | AML alerts, KYC/compliance status, update KYC status                   |
+| `TimezoneService`       | `core/services/`   | IANA timezone signal, `formatTxDateTime()`                             |
+| `LocalStorageService`   | `shared/services/` | Typed localStorage wrapper (language key)                              |
+| `SessionStorageService` | `shared/services/` | Typed sessionStorage wrapper (PKCE, tokens, tx_wallet)                 |
 
 ---
 
 ### Components
 
-| Component                   | Route                   | Notes                                                                               |
-| --------------------------- | ----------------------- | ----------------------------------------------------------------------------------- |
-| `AppComponent`              | root shell              | `<app-header>` + `<router-outlet>`; restores i18n lang from localStorage            |
-| `HeaderComponent`           | shared                  | Logo, nav links, language pill (en/vi), sign-out                                    |
-| `HomeComponent`             | `/`                     | Auth: "Go to Wallet" + "Top Up" links. Unauth: split branding/sign-in layout        |
-| `SignInComponent`           | `/sign-in`              | No form — auth users → `/`, unauth → `authService.redirectToLogin('/')`             |
-| `SignUpComponent`           | `/sign-up`              | Auth users → `/`, unauth → `authService.redirectToRegister()`                       |
-| `CallbackComponent`         | `/auth/callback`        | Exchanges PKCE code → tokens → bootstrap → navigate to `callbackUrl`                |
-| `TradingComponent`          | `/trading`              | Symbol selector, order book, candlestick chart, recent trades, order form, deposits |
-| `CandlestickChartComponent` | inside `/trading`       | `lightweight-charts` v5; timeframe selector (1m/5m/15m/1h/4h/1D); dark theme        |
-| `WalletComponent`           | `/wallet`               | Wallet cards, transaction history, filter pills, pagination, timezone-aware dates   |
-| `TopupComponent`            | `/wallet/topup`         | Amount + provider (PayPal/Stripe) selection → redirect to payment provider          |
-| `TransferComponent`         | `/wallet/transfer`      | P2P transfer; idempotency key generated on init; success state with new balance     |
-| `WithdrawComponent`         | `/wallet/withdraw`      | Withdrawal; same idempotency pattern as transfer                                    |
-| `SuccessComponent`          | `/payment/success`      | Adaptive polling until balance updates; 10 s countdown redirect after confirm       |
-| `CancelComponent`           | `/payment/cancel`       | Static: warning icon, "Try Again" / "Back to Wallet" links                          |
-| `ComplianceComponent`       | `/compliance`           | AML alerts dashboard; status filter pills; paginated table (20/page); row → detail  |
-| `ReviewComponent`           | `/compliance/:walletId` | KYC review detail; AML + KYC status badges; KYC status update form                  |
+| Component                   | Route                   | Notes                                                                                |
+| --------------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| `AppComponent`              | root shell              | `<app-header>` + `<router-outlet>`; restores i18n lang from localStorage             |
+| `HeaderComponent`           | shared                  | Logo, nav links, language pill (en/vi), sign-out; RBAC-aware nav (compliance, users) |
+| `HomeComponent`             | `/`                     | Auth: "Go to Wallet" + "Top Up" links. Unauth: split branding/sign-in layout         |
+| `SignInComponent`           | `/sign-in`              | No form — auth users → `/`, unauth → `authService.redirectToLogin('/')`              |
+| `SignUpComponent`           | `/sign-up`              | Auth users → `/`, unauth → `authService.redirectToRegister()`                        |
+| `CallbackComponent`         | `/auth/callback`        | Exchanges PKCE code → tokens → bootstrap → navigate to `callbackUrl`                 |
+| `UnauthorizedComponent`     | `/unauthorized`         | 403 error page for insufficient role                                                 |
+| `TradingComponent`          | `/trading`              | Symbol selector, order book, candlestick chart, recent trades, order form, deposits  |
+| `CandlestickChartComponent` | inside `/trading`       | `lightweight-charts` v5; timeframe selector (1m/5m/15m/1h/4h/1D); dark theme         |
+| `WalletComponent`           | `/wallet`               | Wallet cards, transaction history, filter pills, pagination, timezone-aware dates    |
+| `TopupComponent`            | `/wallet/topup`         | Amount + provider (PayPal/Stripe) selection → redirect to payment provider           |
+| `TransferComponent`         | `/wallet/transfer`      | P2P transfer; idempotency key generated on init; success state with new balance      |
+| `WithdrawComponent`         | `/wallet/withdraw`      | Withdrawal; same idempotency pattern as transfer                                     |
+| `SuccessComponent`          | `/payment/success`      | Adaptive polling until balance updates; 10 s countdown redirect after confirm        |
+| `CancelComponent`           | `/payment/cancel`       | Static: warning icon, "Try Again" / "Back to Wallet" links                           |
+| `ComplianceComponent`       | `/compliance`           | AML alerts dashboard; status filter pills; paginated table (20/page); row → detail   |
+| `ReviewComponent`           | `/compliance/:walletId` | KYC review detail; AML + KYC status badges; KYC status update form                   |
+| `UserManagementComponent`   | `/users`                | Admin user list; pagination; edit roles; delete user (backoffice_admin only)         |
+| `CreateUserComponent`       | `/users/create`         | Form to create new admin user with email, password, roles                            |
 
 ---
 
@@ -260,38 +269,42 @@ updates `document.documentElement.lang`, and writes to `localStorage['lang']`.
 
 ### API Contracts
 
-**Credential** (`credentialApiUrl`)
+**Admin users** (`bffAdminApiUrl`)
 
 ```text
-GET  /v1/user/me  →  { userId, tokenUserId, requiresTokenRefresh }
+GET    /api/v1/admin/users?page&pageSize       →  AdminUserDto[]
+GET    /api/v1/admin/users/{id}                →  AdminUserDtoApiResponse
+POST   /api/v1/admin/users                     →  AdminUserDtoApiResponse
+DELETE /api/v1/admin/users/{id}                →  void
+PATCH  /api/v1/admin/users/{id}/roles          →  AdminUserDtoApiResponse
 ```
 
-**Wallet** (`walletApiUrl`)
+**Wallet** (`bffAdminApiUrl`)
 
 ```text
-GET  /v1/wallet/my                              →  WalletDto[]
-GET  /v1/transaction/{walletId}?page&pageSize   →  WalletTransactionPage
-POST /v1/wallet/{walletId}/transfer             →  { transactionId }
-POST /v1/wallet/{walletId}/withdraw             →  { transactionId }
+GET  /api/v1/wallets                                      →  WalletDto[]
+GET  /api/v1/wallets/{walletId}/transactions?page&pageSize →  WalletTransactionPage
+POST /api/v1/wallets/{walletId}/transfers                  →  { transactionId }
+POST /api/v1/wallets/{walletId}/withdrawals                →  { transactionId }
 ```
 
-**Payment** (`paymentApiUrl`)
+**Payment** (`bffAdminApiUrl`)
 
 ```text
-POST /v1/payment/{walletId}/topup               →  { transactionId, redirectUrl }
+POST /api/v1/payments/topups                    →  { transactionId, redirectUrl }
 ```
 
-**Trading** (`tradingApiUrl`)
+**Trading REST** (`bffAdminApiUrl`)
 
 ```text
-GET    /v1/order/book?symbol&levels             →  OrderBookDto
-GET    /v1/order/my?page&pageSize&from&to&sort  →  OrderPageDto
-GET    /v1/order/trades?symbol&...              →  TradeCursorPageDto  (cursor-paged)
-POST   /v1/order                                →  { orderId }         (requires idempotencyKey)
-DELETE /v1/order/{orderId}                      →  void                (requires idempotencyKey)
-GET    /v1/marketrule/{symbol}                  →  MarketRuleDto
-GET    /v1/tradingaccount/balance               →  TradingBalancePageDto
-POST   /v1/tradingaccount/deposit               →  void                (requires idempotencyKey)
+GET    /api/v1/markets/order-book?symbol&levels →  OrderBookDto
+GET    /api/v1/trading/orders?page&pageSize     →  OrderPageDto
+GET    /api/v1/markets/trades?symbol&...        →  TradeCursorPageDto
+POST   /api/v1/trading/orders                   →  { orderId }
+DELETE /api/v1/trading/orders/{orderId}         →  void
+GET    /api/v1/markets/{symbol}                 →  MarketRuleDto
+GET    /api/v1/trading/balances                 →  TradingBalancePageDto
+POST   /api/v1/trading/deposits                 →  void
 ```
 
 **Trading SignalR** hub at `{tradingApiUrl}/hubs/trading`
@@ -299,12 +312,12 @@ POST   /v1/tradingaccount/deposit               →  void                (requir
 - Client listens: `OrderBookUpdated(OrderBookDto)`, `TradeExecuted(TradeDto)`
 - Client invokes: `Subscribe(symbol)`, `Unsubscribe(symbol)`
 
-**Compliance** (`complianceApiUrl`)
+**Compliance** (`bffAdminApiUrl`)
 
 ```text
-GET   /v1/wallets/{walletId}/compliance         →  ComplianceStatusDto
-GET   /v1/aml/alerts?status&page&pageSize       →  PagedResponse<AmlAlertDto>
-PATCH /v1/wallets/{walletId}/kyc/status         →  void
+GET   /api/v1/compliance/wallets/{walletId}     →  ComplianceStatusDto
+GET   /api/v1/compliance/aml-alerts?status      →  PagedResponse<AmlAlertDto>
+PATCH /api/v1/compliance/wallets/{walletId}/kyc/status →  void
 ```
 
 ---
@@ -314,8 +327,8 @@ PATCH /v1/wallets/{walletId}/kyc/status         →  void
 ```typescript
 // auth.model.ts
 interface MeResponse {
-  userId: number;
-  tokenUserId: number | null;
+  userId: string;
+  tokenUserId: string | null;
   requiresTokenRefresh: boolean;
 }
 interface TokenSet {
@@ -327,14 +340,16 @@ interface TokenSet {
 
 // runtime-config.model.ts
 interface RuntimeConfig {
-  credentialApiUrl: string;
-  paymentApiUrl: string;
+  bffAdminApiUrl: string;
   tradingApiUrl: string;
-  walletApiUrl: string;
-  complianceApiUrl: string;
-  keycloakIssuer: string;
-  keycloakClientId: string;
-  keycloakScope: string;
+  authProvider: AuthProvider;
+  authIssuer: string;
+  authClientId: string;
+  authScope: string;
+  authAuthorizationEndpoint: string;
+  authTokenEndpoint: string;
+  authLogoutEndpoint: string;
+  authRegistrationEndpoint: string;
 }
 
 // wallet.model.ts
@@ -471,21 +486,73 @@ type AmlStatus = 'Clear' | 'Suspicious' | 'Blocked' | 'Review';
 
 interface ComplianceStatusDto {
   walletId: string;
+  userId: string;
   kycStatus: KycStatus;
   amlStatus: AmlStatus;
+  updatedAt: string;
+  createdAt: string;
 }
 interface AmlAlertDto {
   walletId: string;
+  userId: string;
   amlStatus: AmlStatus;
-  // additional alert fields
+  kycStatus: KycStatus;
+  updatedAt: string;
 }
 interface UpdateKycStatusRequest {
-  kycStatus: KycStatus;
+  status: KycStatus;
 }
 interface PagedResponse<T> {
   items: T[];
-  totalCount: number;
+  total: number;
   page: number;
   pageSize: number;
 }
+
+// admin-user.model.ts
+interface AdminUserDto {
+  id: string;
+  email: string;
+  displayName: string;
+  enabled: boolean;
+  roles: string[];
+  createdAt: string;
+}
+interface AdminUserListResponse {
+  success: boolean;
+  message: string | null;
+  data: AdminUserDto[];
+}
+interface AdminUserResponse {
+  success: boolean;
+  message: string | null;
+  data: AdminUserDto;
+}
+interface CreateAdminUserCommand {
+  email: string;
+  password: string;
+  displayName: string;
+  roles: string[];
+}
+interface UpdateAdminUserRolesRequest {
+  roles: string[];
+}
+type CsnpRole =
+  | 'csnp.super_admin'
+  | 'csnp.backoffice_admin'
+  | 'csnp.compliance_admin'
+  | 'csnp.risk_analyst'
+  | 'csnp.finance_operator'
+  | 'csnp.support_agent'
+  | 'csnp.auditor';
+
+export const CSNP_ROLES: readonly CsnpRole[] = [
+  'csnp.super_admin',
+  'csnp.backoffice_admin',
+  'csnp.compliance_admin',
+  'csnp.risk_analyst',
+  'csnp.finance_operator',
+  'csnp.support_agent',
+  'csnp.auditor',
+];
 ```

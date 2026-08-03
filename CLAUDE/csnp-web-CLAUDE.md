@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**CSNP UI Web** is a Next.js frontend for the CSNP (Cross-Sector Network/Payment) platform. Users can:
+**CSNP UI Web** is a Next.js frontend for the CSNP (Core Services Network Platform) platform. Users can:
 
-- Authenticate via Keycloak (OpenID Connect / OAuth 2.0)
+- Authenticate through a configurable OIDC provider (Keycloak or Cognito)
 - Manage digital wallets (balance, transaction history, P2P transfers, top-ups, withdrawals)
 - Trade on a real-time order book (SignalR + candlestick charts)
 - Check KYC/AML compliance status per wallet
@@ -16,7 +16,7 @@
 | --------------- | ------------------------------------------------- |
 | Framework       | Next.js (App Router) + React 19                   |
 | Language        | TypeScript (strict mode)                          |
-| Auth            | NextAuth 4 + Keycloak (OpenID Connect)            |
+| Auth            | NextAuth 4 + configurable OIDC provider           |
 | Styling         | Tailwind CSS 4 + PostCSS (`@tailwindcss/postcss`) |
 | i18n            | i18next + react-i18next (vi default, en fallback) |
 | Real-time       | @microsoft/signalr (WebSocket/SSE)                |
@@ -32,12 +32,12 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── auth/[...nextauth]/route.ts      # NextAuth config, JWT callbacks, token refresh
-│   │   ├── config/route.ts                  # Public runtime config: keycloakIssuer, keycloakClientId, tradingHubUrl
+│   │   ├── config/route.ts                  # Public runtime config: authProvider, authIssuer, authClientId, auth endpoints, tradingHubUrl
 │   │   └── proxy/[target]/[...path]/route.ts # Server-side proxy; hides backend URLs from browser
 │   ├── layout.tsx                           # Root layout (fonts, RootLayoutClient)
 │   ├── page.tsx                             # Home: landing (unauth) or wallet dashboard (auth)
-│   ├── sign-in/page.tsx                     # Immediately triggers signIn("keycloak"), no UI
-│   ├── sign-up/page.tsx                     # Manual PKCE → Keycloak /registrations
+│   ├── sign-in/page.tsx                     # Immediately triggers signIn(configured provider), no UI
+│   ├── sign-up/page.tsx                     # Manual PKCE → provider registration endpoint
 │   ├── payment/
 │   │   ├── success/page.tsx                 # Post-payment polling (Stripe/PayPal)
 │   │   └── cancel/page.tsx                  # Payment cancellation landing
@@ -59,7 +59,6 @@ src/
 ├── providers/
 │   └── RootLayoutClient.tsx                 # SessionProvider → SessionGuard → BootstrapProvider
 ├── services/
-│   ├── user.service.ts                      # GET /v1/user/me (bootstrap sync)
 │   ├── wallet.service.ts                    # Wallet + transaction APIs (retry on empty wallet)
 │   ├── payment.service.ts                   # Top-up API
 │   ├── trading.service.ts                   # Order book, orders, trades, deposit
@@ -93,49 +92,42 @@ pnpm format:check    # Prettier (check only)
 Environment files live in `env/`. All variables are **server-side only** — backend URLs never reach the browser (proxy handles routing).
 
 ```bash
-# Backend service URLs (server-side only)
-CREDENTIAL_API_URL=https://api.csnp.xyz/credential/
-WALLET_API_URL=https://api.csnp.xyz/wallet/
-PAYMENT_API_URL=https://api.csnp.xyz/payment/
-TRADING_API_URL=https://api.csnp.xyz/trading/
-COMPLIANCE_API_URL=https://api.csnp.xyz/compliance/
+# BFF entrypoint for normal web flows
+BFF_WEB_URL=http://localhost:8081
 
-# Keycloak (issuer + client ID exposed via /api/config)
-KEYCLOAK_ISSUER=https://idp.csnp.xyz/realms/csnp
-KEYCLOAK_CLIENT_ID=ui-web
-KEYCLOAK_CLIENT_SECRET=<secret>
-KEYCLOAK_SCOPE=openid profile email credential-scope payment-scope trading-scope wallet-scope compliance-scope
+# External OIDC provider
+AUTH_PROVIDER=keycloak
+AUTH_ISSUER=https://idp.csnp.xyz/realms/csnp
+AUTH_CLIENT_ID=ui-web
+AUTH_CLIENT_SECRET=<secret>
+AUTH_SCOPES=openid profile email bff-web-scope
 
 # NextAuth
-NEXTAUTH_URL=https://app.csnp.xyz
+NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=<secret>
 ```
 
-`tradingHubUrl` is derived from `TRADING_API_URL + "hubs/trading"` in `server-env.ts` — there is no separate env var for it.
+`tradingHubUrl` is derived from `TRADING_API_URL + "hubs/trading"` to preserve the pre-BFF SignalR hub behavior. It must not use the BFF `/bff/api/v1` route prefix because the SignalR market-data hub is owned by Trading API, not the Web BFF.
 
 ## Authentication Architecture
 
 ### Flow
 
 1. Unauthenticated visit to `/` → landing page with sign-in/sign-up
-2. **Sign-in**: `/sign-in` immediately calls `signIn("keycloak")` (no UI) → Keycloak → callback → JWT cookie
-3. **Sign-up**: Manual PKCE — 64-byte random verifier + SHA-256 challenge stored in `sessionStorage` under `next-auth.pkce.code_verifier` → redirect to Keycloak `/registrations` (not `/auth`) → `/api/auth/callback/keycloak` completes exchange
-4. **Bootstrap**: Client calls `GET /v1/user/me`; triggers `update({ bootstrap: true })` if needed → server-side token refresh → `AuthBootstrapContext.ready = true` → business APIs activate
-5. **Logout**: Two steps — `signOut({ redirect: false })` clears NextAuth cookie, then redirect to Keycloak `/protocol/openid-connect/logout?id_token_hint=...&post_logout_redirect_uri=...` destroys SSO session
+2. **Sign-in**: `/sign-in` immediately calls `signIn(configuredProvider)` (no UI) → external OIDC provider → callback → JWT cookie
+3. **Sign-up**: Manual PKCE — 64-byte random verifier + SHA-256 challenge stored in `sessionStorage` under `next-auth.pkce.code_verifier` → redirect to the provider-specific registration endpoint → `/api/auth/callback/{provider}` completes exchange
+4. **Bootstrap**: NextAuth exposes the access token; BFF protected business routes run csnp-identity onboarding server-side before downstream calls
+5. **Logout**: Two steps — `signOut({ redirect: false })` clears the NextAuth cookie, then redirect to the configured provider logout endpoint to destroy the SSO session
 
 ### NextAuth JWT Callbacks
 
-- **`jwt()`**: Stores tokens on first login; auto-refreshes with 30s expiry buffer; **skips refresh when `needsBootstrap=true`** (refreshing before bootstrap yields a token still missing `user_id`)
-- **`session()`**: Exposes `accessToken`, `idToken`, `expiresAt`, `error`, `needsBootstrap` to client
+- **`jwt()`**: Stores tokens on first login; auto-refreshes with 30s expiry buffer
+- **`session()`**: Exposes `accessToken`, `idToken`, `expiresAt`, `error` to client
 - **`refreshAccessToken()`**: On failure sets `error = "RefreshAccessTokenError"`
 
 ### Bootstrap Provider (`src/providers/RootLayoutClient.tsx`)
 
-Uses **module-level variables** (`bootstrapStarted`, `bootstrapCompleted`, `bootstrapToken`) instead of `useRef` so state survives React remounts during Next.js navigation. Three scenarios:
-
-- **Scenario A**: New user — `needsBootstrap=true`, `user_id` missing from JWT → call `/me` → refresh token → ready
-- **Scenario B**: Returning user — `needsBootstrap=false`, `user_id` present → call `/me` to verify → ready without refresh
-- **Scenario C**: Stale token — `user_id` present but DB row deleted → `/me` returns `requiresTokenRefresh=true` → refresh → ready
+Uses **module-level variables** (`bootstrapCompleted`, `bootstrapToken`) instead of `useRef` so state survives React remounts during Next.js navigation. It marks the app ready once NextAuth has an access token; identity onboarding is owned by BFF middleware.
 
 ### SessionGuard
 
@@ -143,43 +135,38 @@ Only calls `signOut()` on `session.error === "RefreshAccessTokenError"` (real re
 
 ## API Architecture
 
-### Server-Side Proxy
+### BFF Rewrite
 
-All browser API calls route through `/api/proxy/{target}/{path}`.
-
-- **Allowed targets**: `credential`, `wallet`, `payment`, `trading`, `compliance`
-- **Forwarded headers**: `accept`, `accept-language`, `authorization`, `content-type`, `idempotency-key`, `x-correlation-id`
-- **Response**: passes through `cache-control`, `content-type`; always adds `Cache-Control: no-store`
+All browser API calls route through `/bff/{path}`, which Next.js rewrites to `BFF_WEB_URL/{path}`. The app no longer owns a per-service `/api/proxy/{target}` route.
 
 ### API Client (`src/lib/fetch-wrapper.ts`)
 
-`apiFetch(path, options, target)`:
+`apiFetch(path, options)`:
 
-- **Client-side**: routes to `/api/proxy/{target}`; **server-side**: calls backend URL directly
+- **Client-side**: routes to `/bff/{path}`; **server-side**: calls `BFF_WEB_URL/{path}` directly
 - Injects `Content-Type: application/json`, `x-correlation-id` (UUID per call), `Accept-Language`
-- **401 retry**: Single retry with 300–500ms jitter to handle Keycloak/backend sync races; throws `UnauthorizedError` on persistent 401 (never auto-signs-out)
+- **401 retry**: Single retry with 300–500ms jitter to tolerate transient identity-propagation races; throws `UnauthorizedError` on persistent 401 (never auto-signs-out)
 - **204 No Content**: Returns `null`
 - **Error extraction**: Reads `.error`, `.message`, or `.errors` — `.errors` flattened from .NET validation format `{ Field: string[] }`
 
 ## Business APIs
 
-| Service    | Method | Endpoint                                       | Notes                                                                            |
-| ---------- | ------ | ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| Credential | GET    | `/v1/user/me`                                  | Bootstrap sync; returns `requiresTokenRefresh`                                   |
-| Wallet     | GET    | `/v1/wallet/my`                                | Retries 4× with 0/500/1000/2000ms backoff (eventual consistency)                 |
-| Wallet     | GET    | `/v1/transaction/{walletId}?page=X&pageSize=Y` | Offset pagination (default page=1, pageSize=10)                                  |
-| Wallet     | POST   | `/v1/wallet/{walletId}/transfer`               | `{ transactionId, toAddress, amount }` — client-generated UUID                   |
-| Wallet     | POST   | `/v1/wallet/{walletId}/withdraw`               | `{ transactionId, bankAccount, amount }` — client-generated UUID                 |
-| Payment    | POST   | `/v1/payment/{walletId}/topup`                 | Returns `redirectUrl`; `transactionId` cached in sessionStorage                  |
-| Trading    | GET    | `/v1/order/book?symbol=X&levels=N`             | Public; order book snapshot                                                      |
-| Trading    | GET    | `/v1/order/trades?symbol=X&...`                | Cursor-based pagination; supports from/to date range, sort dir                   |
-| Trading    | GET    | `/v1/marketrule/{symbol}`                      | `tickSize`, `lotSize`, `minNotional` for validation                              |
-| Trading    | GET    | `/v1/order/my?page=X&pageSize=Y`               | Auth required; user's open orders                                                |
-| Trading    | POST   | `/v1/order`                                    | `{ symbol, baseAsset, quoteAsset, side, type, price, quantity, idempotencyKey }` |
-| Trading    | DELETE | `/v1/order/{orderId}`                          | `Idempotency-Key` header; per-order key stored in component state                |
-| Trading    | GET    | `/v1/tradingaccount/balance`                   | Per-asset balances (available vs. reserved); paginated                           |
-| Trading    | POST   | `/v1/tradingaccount/deposit`                   | Wallet → trading account; `{ walletId, asset, amount, idempotencyKey }`          |
-| Compliance | GET    | `/v1/wallets/{walletId}/compliance`            | Returns `ComplianceStatusDto`; gracefully returns `null` on 404/error            |
+| Service    | Method | Endpoint                                            | Notes                                                                            |
+| ---------- | ------ | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Wallet     | GET    | `/api/v1/wallets`                                   | Retries only transient network/5xx failures                                      |
+| Wallet     | GET    | `/api/v1/wallets/{walletId}/transactions?page=X...` | Offset pagination (default page=1, pageSize=10)                                  |
+| Wallet     | POST   | `/api/v1/wallets/{walletId}/transfers`              | `{ transactionId, toAddress, amount }` - client-generated UUID                   |
+| Wallet     | POST   | `/api/v1/wallets/{walletId}/withdrawals`            | `{ transactionId, bankAccount, amount }` - client-generated UUID                 |
+| Payment    | POST   | `/api/v1/payments/topups`                           | Returns `redirectUrl`; `transactionId` cached in sessionStorage                  |
+| Trading    | GET    | `/api/v1/markets/order-book?symbol=X&levels=N`      | Public; order book snapshot                                                      |
+| Trading    | GET    | `/api/v1/markets/trades?symbol=X&...`               | Cursor-based pagination; supports from/to date range, sort dir                   |
+| Trading    | GET    | `/api/v1/markets/{symbol}`                          | `tickSize`, `lotSize`, `minNotional` for validation                              |
+| Trading    | GET    | `/api/v1/trading/orders?page=X&pageSize=Y`          | Auth required; user's open orders                                                |
+| Trading    | POST   | `/api/v1/trading/orders`                            | `{ symbol, baseAsset, quoteAsset, side, type, price, quantity, idempotencyKey }` |
+| Trading    | DELETE | `/api/v1/trading/orders/{orderId}`                  | `Idempotency-Key` header; per-order key stored in component state                |
+| Trading    | GET    | `/api/v1/trading/balances`                          | Per-asset balances (available vs. reserved); paginated                           |
+| Trading    | POST   | `/api/v1/trading/deposits`                          | Wallet to trading account; `{ walletId, asset, amount, idempotencyKey }`         |
+| Compliance | GET    | `/api/v1/compliance/wallets/{walletId}`             | Returns `ComplianceStatusDto`; gracefully returns `null` on 404/error            |
 
 ## Key Domain Types
 
@@ -204,7 +191,7 @@ ComplianceStatusDto: {
 
 ### Runtime Config
 
-`useRuntimeConfig` fetches `/api/config` once, caches in a module-level variable, and uses a shared promise to prevent stampede. Provides `keycloakIssuer`, `keycloakClientId`, `tradingHubUrl` to all client components.
+`useRuntimeConfig` fetches `/api/config` once, caches in a module-level variable, and uses a shared promise to prevent stampede. Provides provider-neutral auth configuration and `tradingHubUrl` to client components.
 
 ### Real-Time Trading
 
